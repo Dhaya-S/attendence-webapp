@@ -1,0 +1,631 @@
+Continue refining the existing Admin Web application.
+
+Do NOT redesign the application.
+
+Do NOT regenerate Login, Authentication, Getting Started, Organization Setup Wizard, Global Navigation, Design System, Components, Colors, Typography or Layouts created in previous prompts.
+
+Assume the administrator has successfully completed onboarding and has clicked "Launch Workspace".
+
+Continue from that state.
+
+The attached Mobile IA remains the SINGLE SOURCE OF TRUTH.
+
+The Web application must follow the Mobile IA exactly.
+
+Desktop should only enhance the experience with desktop patterns such as split views, tables, filters, drawers and bulk actions.
+
+Never change the IA.
+
+Never rename modules.
+
+Never introduce new navigation.
+
+────────────────────────────────────
+
+OBJECTIVE
+
+Build the complete "My Space" and "Team" modules.
+
+These should become the Admin's primary workspace.
+
+The experience should feel like a modern productivity workspace similar to Atlassian and Linear, while using interaction ideas inspired by Zoho People.
+
+Do NOT copy Zoho's UI or Information Architecture.
+
+The workspace should prioritize work, approvals, tasks and communication rather than analytics.
+
+────────────────────────────────────
+
+HOME
+
+Keep the existing structure.
+
+Home
+
+• My Space
+
+• Team
+
+• Organization
+
+Do not create another Dashboard module.
+
+My Space is the dashboard.
+
+────────────────────────────────────
+
+MY SPACE
+
+Keep exactly three tabs.
+
+Overview
+
+Dashboard
+
+Delegation
+
+────────────────────────────────────
+
+OVERVIEW
+
+This is the landing page after onboarding.
+
+Remove all unnecessary charts.
+
+Do NOT display
+
+Pie Charts
+
+Bar Charts
+
+Line Charts
+
+Executive Analytics
+
+Business Intelligence Widgets
+
+Instead create a workspace.
+
+Sections
+
+Greeting
+
+Current Date
+
+Current Time
+
+────────────────
+
+Attendance
+
+Current Status
+
+Check In
+
+Break
+
+Resume
+
+Check Out
+
+Current Shift
+
+Working Hours
+
+Attendance History
+
+The Check In flow should be identical to Mobile.
+
+────────────────
+
+Pending Approvals
+
+Attendance Requests
+
+Leave Requests
+
+Department Requests
+
+Shift Requests
+
+Approval Counter
+
+View All
+
+────────────────
+
+Today's Tasks
+
+My Tasks
+
+Pending
+
+Overdue
+
+Completed Today
+
+Create Task
+
+────────────────
+
+Recent Activities
+
+Employee Joined
+
+Department Updated
+
+Leave Approved
+
+Attendance Updated
+
+Recent Organization Activities
+
+────────────────
+
+Announcements
+
+Pinned
+
+Recent
+
+Read More
+
+────────────────
+
+Calendar
+
+Today's Events
+
+Upcoming Holidays
+
+Upcoming Leave
+
+Shift Schedule
+
+────────────────
+
+Quick Actions
+
+Add Employee
+
+Create Task
+
+Create Announcement
+
+Add Department
+
+Create Holiday
+
+Create Shift
+
+────────────────
+
+AI Assistant
+
+Today's Summary
+
+Suggested Actions
+
+Missing Check-ins
+
+Employees requiring attention
+
+Pending approvals
+
+Smart recommendations
+
+────────────────────────────────────
+
+DASHBOARD
+
+This page provides more detailed operational information.
+
+Use compact cards.
+
+Recent Employees
+
+Attendance Summary
+
+Leave Summary
+
+Department Overview
+
+Recent Documents
+
+Organization Health
+
+Pending Activities
+
+No charts unless specifically related to Attendance Analytics.
+
+────────────────────────────────────
+
+DELEGATION
+
+Implement a complete delegation workflow.
+
+Delegation Dashboard
+
+Active Delegations
+
+Upcoming Delegations
+
+Past Delegations
+
+Create Delegation
+
+Edit Delegation
+
+Cancel Delegation
+
+History
+
+Workflow
+
+Select Delegate
+
+↓
+
+Select Responsibilities
+
+↓
+
+Select Approval Types
+
+↓
+
+Choose Date Range
+
+↓
+
+Review
+
+↓
+
+Submit
+
+Everything should be interactive.
+
+────────────────────────────────────
+
+TEAM
+
+Keep the Mobile IA.
+
+Tabs
+
+Members
+
+Feed
+
+Approvals
+
+Tasks
+
+Departments
+
+────────────────────────────────────
+
+MEMBERS
+
+Desktop should use Split View.
+
+LEFT
+
+Employee Directory
+
+Search
+
+Department Filter
+
+Manager Filter
+
+Status Filter
+
+Bulk Selection
+
+RIGHT
+
+Employee Workspace
+
+Selecting an employee should update the workspace.
+
+Do not navigate to another page.
+
+────────────────────────────────────
+
+EMPLOYEE WORKSPACE
+
+Inspired by Zoho's interaction pattern but redesigned using our design system.
+
+Banner
+
+Employee Card
+
+Employee Name
+
+Photo
+
+Employee ID
+
+Department
+
+Designation
+
+Reporting Manager
+
+Current Status
+
+Quick Actions
+
+Tabs
+
+Activities
+
+Profile
+
+Attendance
+
+Leave
+
+Shift
+
+Files
+
+Career History
+
+Related Data
+
+Activities
+
+Timeline
+
+Announcements
+
+Recent Activity
+
+Comments
+
+Tasks
+
+Profile
+
+Personal Information
+
+Employment Information
+
+Emergency Contact
+
+Reporting Structure
+
+Attendance
+
+Today's Attendance
+
+Attendance Timeline
+
+History
+
+Corrections
+
+Leave
+
+Balance
+
+Requests
+
+History
+
+Shift
+
+Current Shift
+
+Upcoming Shift
+
+History
+
+Files
+
+Documents
+
+Certificates
+
+Offer Letter
+
+Career History
+
+Promotions
+
+Department Changes
+
+Manager Changes
+
+Related Data
+
+Tasks
+
+Approvals
+
+Assets
+
+Department Membership
+
+Everything should load instantly inside the split view.
+
+────────────────────────────────────
+
+TEAM FEED
+
+Internal social feed.
+
+Announcements
+
+Employee Updates
+
+Department Updates
+
+Like
+
+Comment
+
+Mention
+
+Attach Files
+
+Pinned Posts
+
+Department Feed
+
+────────────────────────────────────
+
+TEAM APPROVALS
+
+Approval Inbox
+
+Attendance
+
+Leave
+
+Department Changes
+
+Shift Requests
+
+Bulk Approval
+
+Approve
+
+Reject
+
+View Details
+
+Comment
+
+History
+
+────────────────────────────────────
+
+TEAM TASKS
+
+Task Dashboard
+
+My Tasks
+
+Assigned
+
+In Progress
+
+Completed
+
+Overdue
+
+Task Timeline
+
+Comments
+
+Attachments
+
+Priority
+
+Status
+
+────────────────────────────────────
+
+TEAM DEPARTMENTS
+
+Department Overview
+
+Department Members
+
+Department Head
+
+Recent Activities
+
+Quick Actions
+
+Open Department Workspace
+
+────────────────────────────────────
+
+DESKTOP ENHANCEMENTS
+
+Only enhance the Mobile IA using
+
+Split Views
+
+Tables
+
+Bulk Actions
+
+Advanced Filters
+
+Drawers
+
+Context Menus
+
+Resizable Panels
+
+Keyboard Shortcuts
+
+Inline Editing
+
+Do not create additional modules.
+
+────────────────────────────────────
+
+INTERACTIONS
+
+Every button works.
+
+Every card opens.
+
+Every row opens.
+
+Every employee opens.
+
+Every task opens.
+
+Every approval opens.
+
+Every announcement opens.
+
+Every menu works.
+
+Every dropdown works.
+
+Every filter works.
+
+Every breadcrumb works.
+
+Every drawer works.
+
+Every modal works.
+
+Every quick action launches a workflow.
+
+AI executes actions.
+
+No placeholder screens.
+
+No dead links.
+
+────────────────────────────────────
+
+DESIGN PRINCIPLES
+
+Keep the interface clean and calm.
+
+Reduce unnecessary whitespace.
+
+Avoid large dashboard analytics.
+
+Prioritize actions over reports.
+
+Use Roboto.
+
+Maintain the existing design system.
+
+Keep spacing consistent.
+
+Design every screen to production quality with reusable components and complete interactive flows.
+
+Complete My Space and Team before proceeding to Organization.

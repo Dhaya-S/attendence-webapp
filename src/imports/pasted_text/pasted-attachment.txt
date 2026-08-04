@@ -1,0 +1,869 @@
+You are an expert Product Designer, UX Architect, UI Designer, Product Manager, Interaction Designer, Information Architect, Design System Architect, and Figma specialist.
+
+Your task is to DESIGN and BUILD a COMPLETE production-ready Enterprise HRMS Admin Console from scratch.
+
+This is NOT a UI concept.
+This is NOT a Behance project.
+This is NOT a visual exploration.
+
+This should behave exactly like a real SaaS product such as Darwinbox, Zoho People, Keka, Workday, BambooHR or SAP SuccessFactors.
+
+The output should be developer-ready with a fully interactive prototype.
+
+────────────────────────────────────
+
+PROJECT
+
+Enterprise HRMS
+
+Role:
+Admin
+
+Platform:
+Responsive Web
+
+Desktop
+Laptop
+Tablet
+
+Primary Width:
+1440px
+
+Typography:
+Roboto
+
+Primary Brand Color:
+#5C5CFF
+
+Design Style:
+
+• Atlassian
+• Minimal
+• Premium
+• Enterprise
+• Professional
+• Clean
+• Spacious
+• Highly functional
+
+Use neutral colors.
+
+No gradients.
+
+No glassmorphism.
+
+No neumorphism.
+
+Accessibility AA.
+
+8-point spacing system.
+
+Auto Layout everywhere.
+
+Use Variables.
+
+Use Components.
+
+Use Component Variants.
+
+Create a scalable enterprise design system.
+
+────────────────────────────────────
+
+OBJECTIVE
+
+Create the COMPLETE Admin Console.
+
+The prototype should simulate a real HRMS.
+
+The Admin should be able to start from organization onboarding and completely configure the company until daily HR operations are functional.
+
+Everything should be connected.
+
+Every navigation item should work.
+
+Every button should work.
+
+Every icon should work.
+
+Every dropdown should work.
+
+Every chip should work.
+
+Every menu should work.
+
+Every modal should work.
+
+Every drawer should work.
+
+Every breadcrumb should work.
+
+Every table row should work.
+
+Every card should work.
+
+Every CTA should work.
+
+Every link should work.
+
+Never create dead ends.
+
+Every interaction must lead somewhere logical.
+
+────────────────────────────────────
+
+STARTING FLOW
+
+The prototype should begin from:
+
+Admin Login
+
+↓
+
+Welcome
+
+↓
+
+Organization Setup Wizard
+
+↓
+
+Create Company
+
+↓
+
+Company Information
+
+↓
+
+Business Units
+
+↓
+
+Branches
+
+↓
+
+Locations
+
+↓
+
+Departments
+
+↓
+
+Designations
+
+↓
+
+Employment Types
+
+↓
+
+Working Days
+
+↓
+
+Holiday Calendar
+
+↓
+
+Attendance Policy
+
+↓
+
+Leave Policy
+
+↓
+
+Shift Templates
+
+↓
+
+Payroll Settings
+
+↓
+
+Notification Settings
+
+↓
+
+Organization Ready
+
+↓
+
+Admin Dashboard
+
+────────────────────────────────────
+
+FROM THE DASHBOARD THE ADMIN SHOULD BE ABLE TO PERFORM COMPLETE OPERATIONS
+
+Including but not limited to:
+
+Dashboard
+
+Employee Management
+
+Attendance
+
+Leave
+
+Shift & Rosters
+
+Payroll
+
+Announcements
+
+Documents
+
+Assets
+
+Recruitment
+
+Reports
+
+Analytics
+
+Organization
+
+Automation
+
+Settings
+
+Audit
+
+Support
+
+────────────────────────────────────
+
+EMPLOYEE MANAGEMENT FLOW
+
+Dashboard
+
+↓
+
+Employee Directory
+
+↓
+
+Add Employee
+
+↓
+
+Personal Details
+
+↓
+
+Employment Details
+
+↓
+
+Assign Department
+
+↓
+
+Assign Manager
+
+↓
+
+Assign Branch
+
+↓
+
+Assign Shift
+
+↓
+
+Assign Leave Policy
+
+↓
+
+Assign Payroll Structure
+
+↓
+
+Upload Documents
+
+↓
+
+Review
+
+↓
+
+Create Employee
+
+↓
+
+Employee Profile
+
+↓
+
+Attendance
+
+↓
+
+Leave
+
+↓
+
+Documents
+
+↓
+
+Assets
+
+↓
+
+Payroll
+
+↓
+
+Timeline
+
+↓
+
+Edit
+
+↓
+
+Deactivate
+
+↓
+
+Exit Management
+
+────────────────────────────────────
+
+ATTENDANCE FLOW
+
+Attendance Dashboard
+
+↓
+
+Daily Attendance
+
+↓
+
+Monthly Attendance
+
+↓
+
+Calendar
+
+↓
+
+Attendance Timeline
+
+↓
+
+Missing Punch
+
+↓
+
+Regularization
+
+↓
+
+Approval
+
+↓
+
+Import Attendance
+
+↓
+
+Export Attendance
+
+↓
+
+Attendance Analytics
+
+↓
+
+Attendance Settings
+
+────────────────────────────────────
+
+LEAVE FLOW
+
+Leave Dashboard
+
+↓
+
+Leave Requests
+
+↓
+
+Leave Approval
+
+↓
+
+Leave Calendar
+
+↓
+
+Leave Balance
+
+↓
+
+Holiday Calendar
+
+↓
+
+Comp Off
+
+↓
+
+Leave Analytics
+
+↓
+
+Leave Settings
+
+────────────────────────────────────
+
+SHIFT FLOW
+
+Shift Dashboard
+
+↓
+
+Shift Templates
+
+↓
+
+Shift Assignment
+
+↓
+
+Weekly Roster
+
+↓
+
+Monthly Roster
+
+↓
+
+Shift Rotation
+
+↓
+
+Shift Swap
+
+↓
+
+Shift Analytics
+
+↓
+
+Shift Settings
+
+────────────────────────────────────
+
+PAYROLL FLOW
+
+Payroll Dashboard
+
+↓
+
+Salary Structure
+
+↓
+
+Salary Components
+
+↓
+
+Payroll Processing
+
+↓
+
+Payslips
+
+↓
+
+Bonuses
+
+↓
+
+Deductions
+
+↓
+
+Tax
+
+↓
+
+Reports
+
+↓
+
+Payroll Settings
+
+────────────────────────────────────
+
+REPORTS
+
+Attendance Reports
+
+Leave Reports
+
+Payroll Reports
+
+Department Reports
+
+Employee Reports
+
+Custom Reports
+
+Scheduled Reports
+
+Export
+
+────────────────────────────────────
+
+ANALYTICS
+
+Interactive dashboards
+
+KPIs
+
+Charts
+
+Heatmaps
+
+Forecasts
+
+AI Insights
+
+Drill-down Reports
+
+────────────────────────────────────
+
+GLOBAL COMPONENTS
+
+Create reusable components for:
+
+Buttons
+
+Inputs
+
+Dropdowns
+
+Tables
+
+Charts
+
+KPIs
+
+Cards
+
+Status Chips
+
+Badges
+
+Avatars
+
+Tabs
+
+Breadcrumbs
+
+Dialogs
+
+Drawers
+
+Side Sheets
+
+Menus
+
+Pagination
+
+Calendar
+
+Timeline
+
+Search
+
+Filters
+
+Bulk Actions
+
+Notifications
+
+Toasts
+
+Snackbars
+
+Command Palette
+
+AI Panel
+
+Quick Actions
+
+Approval Center
+
+Loading States
+
+Skeletons
+
+Empty States
+
+Success States
+
+Error States
+
+────────────────────────────────────
+
+TABLES
+
+Enterprise-grade tables.
+
+Support:
+
+Search
+
+Sort
+
+Multi Filters
+
+Saved Views
+
+Column Visibility
+
+Grouping
+
+Pagination
+
+Row Selection
+
+Bulk Selection
+
+Bulk Actions
+
+Import
+
+Export
+
+Sticky Header
+
+Sticky Columns
+
+Expandable Rows
+
+Inline Editing
+
+────────────────────────────────────
+
+FILTERS
+
+Department
+
+Branch
+
+Manager
+
+Status
+
+Date Range
+
+Shift
+
+Employment Type
+
+Tags
+
+Saved Filters
+
+Reset
+
+Apply
+
+────────────────────────────────────
+
+AI ASSISTANT
+
+Action-oriented AI.
+
+The AI must:
+
+Generate reports
+
+Search employees
+
+Search attendance
+
+Create announcements
+
+Create workflows
+
+Recommend actions
+
+Open modules
+
+Navigate pages
+
+Analyze attendance
+
+Suggest filters
+
+Summarize analytics
+
+The AI should execute actions, not only answer questions.
+
+────────────────────────────────────
+
+QUICK ACTIONS
+
+Floating launcher.
+
+Examples:
+
+Add Employee
+
+Bulk Import
+
+Mark Attendance
+
+Assign Shift
+
+Approve Leave
+
+Generate Report
+
+Upload Document
+
+Create Announcement
+
+Assign Asset
+
+Configure Workflow
+
+────────────────────────────────────
+
+DATA
+
+Never use lorem ipsum.
+
+Generate realistic:
+
+Employee names
+
+Departments
+
+Attendance
+
+Payroll
+
+Leaves
+
+Organizations
+
+Documents
+
+Charts
+
+Reports
+
+Notifications
+
+Activities
+
+────────────────────────────────────
+
+RESPONSIVENESS
+
+Desktop
+
+↓
+
+Laptop
+
+↓
+
+Tablet
+
+Maintain layout consistency.
+
+────────────────────────────────────
+
+PROTOTYPE
+
+This must be a fully clickable prototype.
+
+Every screen must connect logically.
+
+Every button must navigate.
+
+Every modal must open.
+
+Every drawer must slide.
+
+Every table row must open details.
+
+Every notification should open its destination.
+
+Every breadcrumb should navigate.
+
+Every quick action should launch the corresponding flow.
+
+Every AI action should execute.
+
+Every tab should switch content.
+
+Every card should drill into detail.
+
+Every graph should allow drill-down.
+
+No broken interactions.
+
+No dead links.
+
+No placeholder buttons.
+
+────────────────────────────────────
+
+FIGMA STRUCTURE
+
+00 Foundation
+
+01 Design Tokens
+
+02 Components
+
+03 Navigation
+
+04 Templates
+
+05 Admin Console
+
+06 Prototype
+
+07 Archive
+
+Use clean layer names.
+
+Use Auto Layout.
+
+Use Variables.
+
+Use reusable Components.
+
+Use Variants.
+
+Never detach components.
+
+────────────────────────────────────
+
+QUALITY REQUIREMENT
+
+Design this exactly as if it will be shipped to thousands of enterprise customers tomorrow.
+
+Prioritize usability over decoration.
+
+Every screen must feel production-ready.
+
+Every workflow must be complete.
+
+Every interaction must be meaningful.
+
+The final result should require minimal redesign before developer handoff.
