@@ -331,7 +331,7 @@ export function AppShell() {
     activeHeaderTab = leaveTab;
     onHeaderTabChange = setLeaveTab;
   } else if (page === "team") {
-    headerTabs = ["Overview", "Reportees", "Approvals", "Tasks", "Feed", "Announcements"];
+    headerTabs = ["Overview", "Reportees", "Approvals", "Feed", "Announcements"];
     activeHeaderTab = teamTab;
     onHeaderTabChange = setTeamTab;
   } else if (page === "organization") {
@@ -486,35 +486,6 @@ export function AppShell() {
           >
             <Download size={16} />
             Export
-          </button>
-        </>
-      );
-    } else if (teamTab === "Tasks") {
-      headerToolbar = (
-        <>
-          <div className="relative w-64 h-[38px] flex items-center gap-2 px-3 bg-[#F6F7F9] border border-[#E8E9ED] rounded-[9px]">
-            <Search size={14} className="text-[#9CA0AB] flex-shrink-0" />
-            <input
-              type="text"
-              placeholder="Search Tasks..."
-              value={teamSearch}
-              onChange={(e) => setTeamSearch(e.target.value)}
-              className="w-full bg-transparent text-[13px] text-[#16181D] placeholder-[#9CA0AB] outline-none"
-            />
-          </div>
-          <div className="flex-1" />
-          <button
-            onClick={() => setShowTasksFilter(true)}
-            className="h-10 w-10 flex items-center justify-center p-0 rounded-[10px] border border-[#E5E7EB] bg-[#FFFFFF] text-[#16181D] hover:bg-gray-55 transition-colors cursor-pointer"
-          >
-            <SlidersHorizontal size={16} />
-          </button>
-          <button
-            onClick={() => setShowCreateTask(true)}
-            className="h-10 px-[18px] rounded-[10px] border border-[#E5E7EB] bg-[#FFFFFF] text-[#16181D] text-[14px] font-semibold flex items-center gap-2 hover:bg-gray-55 transition-colors cursor-pointer"
-          >
-            <Plus size={16} strokeWidth={2.2} />
-            Create Task
           </button>
         </>
       );

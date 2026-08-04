@@ -1189,7 +1189,7 @@ export function MySpacePage({
 
   const liveDateFormatted = new Date().toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", year: "numeric" });
 
-  const ALL_TABS = ["Dashboard","Attendance","Leave","Tasks","Approvals","Calendar"];
+  const ALL_TABS = ["Dashboard","Attendance","Leave","Approvals","Calendar"];
   const tabPermMap: Record<string, string> = {
     "Dashboard": "my-space",
     "Attendance": "attendance",

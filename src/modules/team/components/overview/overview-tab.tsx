@@ -381,7 +381,7 @@ export function OverviewTab({
                 {overdueTasksCount > 0 && (
                   <div
                     onClick={() => {
-                      setTeamTab("Tasks");
+                      navigate("tasks");
                     }}
                     className="flex justify-between items-center py-3.5 cursor-pointer hover:bg-gray-50 px-2 rounded-lg transition-colors"
                   >

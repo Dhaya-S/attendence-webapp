@@ -6,7 +6,6 @@ import { Btn, Modal, Drawer, InputField, SelectField, Avt } from "@/shared/compo
 import { OverviewTab } from "../components/overview/overview-tab";
 import { ReporteesTab } from "../components/reportees/reportees-tab";
 import { ApprovalsTab } from "../components/approvals/approvals-tab";
-import { TasksTab } from "../components/tasks/tasks-tab";
 import { FeedTab } from "../components/feed/feed-tab";
 import { AnnouncementsTab } from "../components/announcements/announcements-tab";
 import { INITIAL_POSTS } from "../data/team-data";
@@ -261,11 +260,6 @@ export function TeamPage({
             approveT={approveT}
             rejectT={rejectT}
           />
-        )}
-
-        {/* ── TASKS TAB ── */}
-        {tab === "Tasks" && (
-          <TasksTab search={search} setSelectedTeamTask={setSelectedTeamTask} />
         )}
       </div>
 
