@@ -6,10 +6,12 @@ export interface FeedReaction {
 export interface FeedComment {
   id: string;
   author: string;
+  authorEmail?: string;
   initials: string;
   color: string;
   text: string;
   time: string;
+  createdAt?: number | string;
   edited?: boolean;
   editedTime?: string;
   reactions?: FeedReaction[];
@@ -21,9 +23,11 @@ export interface FeedComment {
 export interface FeedPost {
   id: string;
   author: string;
+  authorEmail?: string;
   initials: string;
   color: string;
   time: string;
+  createdAt?: number | string;
   text: string;
   dept: string;
   designation: string;

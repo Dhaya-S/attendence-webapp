@@ -1550,9 +1550,21 @@ export function MySpacePage({
               month: m,
               year: y,
               dateStr: r.date,
-              label: `Checked in: ${r.checkInTime}`,
+              label: `Checked In: ${r.checkInTime}`,
               type: "Attendance",
               color: "#22C55E",
+            });
+          }
+          if (r.checkOutTime && r.checkOutTime !== "—") {
+            list.push({
+              id: `att_out_${r.date}`,
+              day: d,
+              month: m,
+              year: y,
+              dateStr: r.date,
+              label: `Checked Out: ${r.checkOutTime}`,
+              type: "Attendance",
+              color: "#10B981",
             });
           }
           if (r.status === "WFH") {

@@ -358,18 +358,6 @@ export function AppShell() {
     if (teamTab === "Overview") {
       headerToolbar = (
         <>
-          <div className="flex items-center gap-2">
-            <span className="text-xs text-gray-500 font-semibold uppercase tracking-wider">Team / Department:</span>
-            <select
-              value={teamDeptFilter}
-              onChange={(e) => setTeamDeptFilter(e.target.value)}
-              className="bg-[#FFFFFF] border border-[#E5E7EB] rounded-[10px] h-[38px] px-3 text-xs font-semibold text-gray-808 outline-none cursor-pointer focus:border-[#5C5CFF]/30 transition-colors"
-            >
-              {depts.map(d => (
-                <option key={d} value={d}>{d === "All" ? "All Departments" : d}</option>
-              ))}
-            </select>
-          </div>
           <div className="flex-1" />
           <button
             onClick={() => setShowTeamFilter(true)}

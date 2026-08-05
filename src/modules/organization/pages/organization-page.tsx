@@ -1362,25 +1362,35 @@ export function OrganizationPage({
       if (targetCompanyId) {
         try {
           unsub = onSnapshot(collection(db, "organizations", targetCompanyId, "users"), (snap) => {
+            const formatRole = (r?: string): string => {
+              if (!r) return "";
+              const low = String(r).toLowerCase().trim();
+              if (low === "super_admin" || low === "super admin") return "Super Admin";
+              if (low === "hr_admin" || low === "hr admin") return "HR Admin";
+              if (low === "manager") return "Manager";
+              if (low === "employee") return "Employee";
+              return r;
+            };
+
             const list = snap.docs.map(d => {
               const u = d.data();
               const name = u.name || `${u.firstName || ""} ${u.lastName || ""}`.trim() || u.email || "Employee";
               const initials = u.initials || name.split(" ").map((n: string) => n[0]).join("").toUpperCase().slice(0, 2) || "EM";
               return {
+                ...u,
                 id: d.id || u.id || u.email,
                 name,
                 initials,
                 color: u.color || "#5C5CFF",
                 email: u.email || u.workEmail,
                 dept: u.dept || u.department || "General",
-                designation: u.designation || u.roleLabel || u.role || "Staff",
+                designation: u.designation || u.roleLabel || formatRole(u.role) || u.jobTitle || "Staff",
                 status: u.status || "Active",
                 branch: u.branch || "Headquarters",
                 empType: u.empType || "Full-Time",
                 joinDate: u.joinDate || "Recent",
                 attendance: u.attendance || 100,
                 manager: u.manager || "",
-                ...u
               };
             });
             setRealtimeEmps(list);

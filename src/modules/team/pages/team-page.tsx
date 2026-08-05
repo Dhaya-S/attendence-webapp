@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { Clock, Plus, Send, Check, X, Phone } from "lucide-react";
 import { FeedPost, Employee, AppPage } from "@/shared/types";
 import { cn } from "@/shared/utils";
@@ -8,9 +8,11 @@ import { ReporteesTab } from "../components/reportees/reportees-tab";
 import { ApprovalsTab } from "../components/approvals/approvals-tab";
 import { FeedTab } from "../components/feed/feed-tab";
 import { AnnouncementsTab } from "../components/announcements/announcements-tab";
-import { INITIAL_POSTS } from "../data/team-data";
 import { EMPLOYEES } from "@/modules/organization/data/employees";
 import { LEAVE_REQUESTS } from "@/modules/leave/data/leave-requests";
+import { useAuth } from "@/shared/context/AuthContext";
+import { db } from "@/shared/utils/firebase";
+import { collection, onSnapshot, doc, updateDoc } from "firebase/firestore";
 
 interface TeamPageProps {
   navigate: (p: AppPage, emp?: any, tabOrSection?: string) => void;
@@ -64,10 +66,139 @@ export function TeamPage({
     setTab(activeTab);
   }, [activeTab]);
 
+  const { user, role, companyId, email, displayName } = useAuth();
+  const [dbUsers, setDbUsers] = useState<any[]>([]);
+
+  useEffect(() => {
+    if (!companyId || companyId === "default") return;
+    const usersCol = collection(db, "organizations", companyId, "users");
+    const unsub = onSnapshot(usersCol, (snap) => {
+      const formatRole = (r?: string): string => {
+        if (!r) return "";
+        const low = String(r).toLowerCase().trim();
+        if (low === "super_admin" || low === "super admin") return "Super Admin";
+        if (low === "hr_admin" || low === "hr admin") return "HR Admin";
+        if (low === "manager") return "Manager";
+        if (low === "employee") return "Employee";
+        return r;
+      };
+
+      const list = snap.docs.map((d) => {
+        const u = d.data();
+        const name = u.name || `${u.firstName || ""} ${u.lastName || ""}`.trim() || u.email || "Employee";
+        const initials = u.initials || name.split(" ").map((n: string) => n[0]).join("").toUpperCase().slice(0, 2) || "EM";
+        return {
+          ...u,
+          id: d.id || u.id || u.email,
+          name,
+          initials,
+          color: u.color || "#5C5CFF",
+          email: u.email || u.workEmail,
+          dept: u.dept || u.department || "General",
+          designation: u.designation || u.roleLabel || formatRole(u.role) || u.jobTitle || "Staff",
+          status: u.status || "Active",
+          branch: u.branch || "Headquarters",
+          empType: u.empType || "Full-Time",
+          joinDate: u.joinDate || "Recent",
+          attendance: u.attendance || 100,
+          manager: u.manager || "",
+        };
+      });
+      setDbUsers(list);
+    }, (err) => {
+      console.warn("Error listening to users in team page:", err);
+    });
+    return () => unsub();
+  }, [companyId]);
+
+  const myTeamMembers = useMemo(() => {
+    const baseList = dbUsers.length > 0 ? dbUsers : EMPLOYEES;
+
+    const normalizedEmail = String(email || user?.email || "").toLowerCase();
+    const currentUserProfile = baseList.find(e => String(e.email || e.workEmail || "").toLowerCase() === normalizedEmail);
+
+    const userRole = String(role || currentUserProfile?.role || "employee").toLowerCase();
+    const currentUserName = currentUserProfile?.name || displayName || "";
+
+    if (userRole === "super_admin" || userRole === "admin") {
+      return baseList.filter(e => {
+        const r = String(e.role || "").toLowerCase();
+        const desig = String(e.designation || "").toLowerCase();
+        return r === "super_admin" || r === "admin" || desig.includes("ceo") || desig.includes("cfo") || desig.includes("vp") || desig.includes("director") || desig.includes("admin");
+      });
+    }
+
+    if (userRole === "hr_admin") {
+      return baseList.filter(e => {
+        const r = String(e.role || "").toLowerCase();
+        const desig = String(e.designation || "").toLowerCase();
+        return r === "hr_admin" || desig.includes("hr");
+      });
+    }
+
+    if (userRole === "manager") {
+      const mgrDepts = new Set<string>();
+      
+      const ownDept = currentUserProfile?.dept || currentUserProfile?.department;
+      if (ownDept) mgrDepts.add(ownDept);
+
+      baseList.forEach(e => {
+        const isReportee = (e.manager && currentUserName && String(e.manager).toLowerCase() === currentUserName.toLowerCase()) ||
+                           (e.managerEmail && normalizedEmail && String(e.managerEmail).toLowerCase() === normalizedEmail);
+        if (isReportee && e.dept) {
+          mgrDepts.add(e.dept);
+        }
+      });
+
+      return baseList.filter(e => {
+        const d = e.dept || e.department;
+        return d && mgrDepts.has(d);
+      });
+    }
+
+    const empDept = currentUserProfile?.dept || currentUserProfile?.department || "General";
+    return baseList.filter(e => (e.dept || e.department) === empDept);
+  }, [dbUsers, email, user, role, displayName]);
+
+  // Sync activeTab to local tab state
+  const [dbLeaveRequests, setDbLeaveRequests] = useState<any[]>([]);
+
+  useEffect(() => {
+    if (!companyId || companyId === "default") return;
+    const colRef = collection(db, "organizations", companyId, "leave_requests");
+    const unsub = onSnapshot(colRef, (snap) => {
+      const list = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      setDbLeaveRequests(list);
+    }, (err) => {
+      console.warn("Error listening to leave requests in team-page:", err);
+    });
+    return () => unsub();
+  }, [companyId]);
+
   const [statusFilter, setStatusFilter] = useState("All");
   const [desigFilter, setDesigFilter] = useState("All");
   const [selectedEmp, setSelectedEmp] = useState<Employee | null>(null);
-  const [teamReqs, setTeamReqs] = useState(LEAVE_REQUESTS);
+  const [teamReqs, setTeamReqs] = useState<any[]>([]);
+
+  useEffect(() => {
+    const baseList = dbLeaveRequests.length > 0 ? dbLeaveRequests : LEAVE_REQUESTS;
+    
+    // Filter requests where the applicant is in myTeamMembers
+    const filteredReqs = baseList.filter((req) => {
+      if (!req) return false;
+      const applicantEmail = String(req.applicantEmail || "").toLowerCase();
+      const employeeName = String(req.employee || "").toLowerCase();
+      
+      return myTeamMembers.some((m) => {
+        const mEmail = String(m.email || m.workEmail || "").toLowerCase();
+        const mName = String(m.name || "").toLowerCase();
+        return (applicantEmail && mEmail === applicantEmail) || (employeeName && mName === employeeName);
+      });
+    });
+
+    setTeamReqs(filteredReqs);
+  }, [dbLeaveRequests, myTeamMembers]);
+
   const [tApproveId, setTApproveId] = useState<string | null>(null);
   const [tRejectId, setTRejectId] = useState<string | null>(null);
   const [tRejectReason, setTRejectReason] = useState("");
@@ -80,7 +211,77 @@ export function TeamPage({
   const [showAssignShift, setShowAssignShift] = useState(false);
 
   // --- FEED COLLABORATION SPACE STATE ---
-  const [posts, setPosts] = useState<FeedPost[]>(INITIAL_POSTS);
+  const [posts, setPosts] = useState<FeedPost[]>([]);
+
+  useEffect(() => {
+    if (!companyId || companyId === "default") return;
+    const colRef = collection(db, "organizations", companyId, "team_feed");
+    const unsub = onSnapshot(colRef, (snap) => {
+      const rawList = snap.docs.map(d => ({ id: d.id, ...d.data() } as FeedPost));
+      
+      rawList.sort((a, b) => {
+        const tA = typeof a.createdAt === 'number' ? a.createdAt : new Date(a.createdAt || 0).getTime();
+        const tB = typeof b.createdAt === 'number' ? b.createdAt : new Date(b.createdAt || 0).getTime();
+        return tB - tA;
+      });
+
+      const normalizedEmail = String(email || user?.email || "").toLowerCase();
+      const currentUserProfile = dbUsers.find(e => String(e.email || e.workEmail || "").toLowerCase() === normalizedEmail);
+      const userDept = String(currentUserProfile?.dept || currentUserProfile?.department || "").toLowerCase();
+      const userName = String(displayName || "").toLowerCase();
+
+      const teamFiltered = rawList.filter((post) => {
+        if (!post) return false;
+        const pEmail = String(post.authorEmail || "").toLowerCase();
+        const pAuthor = String(post.author || "").toLowerCase();
+        const pDept = String(post.dept || "").toLowerCase();
+
+        // 1. Current user authored this post
+        if ((pEmail && normalizedEmail && pEmail === normalizedEmail) || (pAuthor && userName && pAuthor === userName)) {
+          return true;
+        }
+
+        // 2. Author is in myTeamMembers (matching role scope: super_admin, hr_admin, manager, or employee department)
+        const isAuthorInTeam = myTeamMembers.some((m) => {
+          const mEmail = String(m.email || m.workEmail || "").toLowerCase();
+          const mName = String(m.name || "").toLowerCase();
+          return (pEmail && mEmail === pEmail) || (pAuthor && mName === pAuthor);
+        });
+        if (isAuthorInTeam) return true;
+
+        // 3. Post department matches user's department
+        if (pDept && pDept !== "all" && userDept && pDept === userDept) {
+          return true;
+        }
+
+        return false;
+      });
+
+      setPosts(teamFiltered);
+    }, (err) => {
+      console.warn("Error listening to team_feed in team-page:", err);
+    });
+    return () => unsub();
+  }, [companyId, myTeamMembers, dbUsers, email, user, displayName]);
+
+  const currentUserInfo = useMemo(() => {
+    const normalizedEmail = String(email || user?.email || "").toLowerCase();
+    const currentUserProfile = dbUsers.find(e => String(e.email || e.workEmail || "").toLowerCase() === normalizedEmail);
+    const currentUserName = currentUserProfile?.name || displayName || email || "Team Member";
+    const currentUserInitials = currentUserProfile?.initials || (currentUserName ? currentUserName.split(" ").map((n: string) => n[0]).join("").toUpperCase().slice(0, 2) : "TM");
+    const currentUserColor = currentUserProfile?.color || "#5C5CFF";
+    const currentUserDesignation = currentUserProfile?.designation || currentUserProfile?.roleLabel || currentUserProfile?.role || "Member";
+
+    return {
+      name: currentUserName,
+      email: normalizedEmail,
+      initials: currentUserInitials,
+      color: currentUserColor,
+      designation: currentUserDesignation,
+      dept: currentUserProfile?.dept || currentUserProfile?.department || "General",
+      role: String(role || currentUserProfile?.role || "employee"),
+    };
+  }, [dbUsers, email, user, displayName, role]);
 
   // Centralized Modal State System
   const [activeModal, setActiveModal] = useState<string | null>(null);
@@ -171,39 +372,75 @@ export function TeamPage({
     setTRejectReason("");
     setActiveModal("reject-leave");
   };
-  const confirmApproveT = () => {
+  const confirmApproveT = async () => {
     if (!tApproveId) return;
-    setTeamReqs((r) =>
-      r.map((x) => (x.id === tApproveId ? { ...x, status: "Approved" } : x))
-    );
+    const isDbReq = dbLeaveRequests.some((x) => x.id === tApproveId);
+    if (isDbReq && companyId && companyId !== "default") {
+      try {
+        const docRef = doc(db, "organizations", companyId, "leave_requests", tApproveId);
+        await updateDoc(docRef, { status: "Approved" });
+      } catch (err) {
+        console.error("Error approving leave request in Firestore:", err);
+      }
+    } else {
+      setTeamReqs((r) =>
+        r.map((x) => (x.id === tApproveId ? { ...x, status: "Approved" } : x))
+      );
+    }
     handleCloseModal();
   };
-  const confirmRejectT = () => {
+
+  const confirmRejectT = async () => {
     if (!tRejectId || !tRejectReason.trim()) return;
-    setTeamReqs((r) =>
-      r.map((x) =>
-        x.id === tRejectId
-          ? { ...x, status: "Rejected", rejectReason: tRejectReason }
-          : x
-      )
-    );
+    const isDbReq = dbLeaveRequests.some((x) => x.id === tRejectId);
+    if (isDbReq && companyId && companyId !== "default") {
+      try {
+        const docRef = doc(db, "organizations", companyId, "leave_requests", tRejectId);
+        await updateDoc(docRef, { status: "Rejected", rejectReason: tRejectReason });
+      } catch (err) {
+        console.error("Error rejecting leave request in Firestore:", err);
+      }
+    } else {
+      setTeamReqs((r) =>
+        r.map((x) =>
+          x.id === tRejectId
+            ? { ...x, status: "Rejected", rejectReason: tRejectReason }
+            : x
+        )
+      );
+    }
     handleCloseModal();
   };
 
-  const filtered = EMPLOYEES.filter((e) => {
-    const ms =
-      e.name.toLowerCase().includes(search.toLowerCase()) ||
-      e.designation.toLowerCase().includes(search.toLowerCase());
-    const md = deptFilter === "All" || e.dept === deptFilter;
-    const mst = statusFilter === "All" || e.status === statusFilter;
-    const mdg = desigFilter === "All" || e.designation === desigFilter;
-    const mloc = locationFilter === "All" || e.branch === locationFilter;
-    return ms && md && mst && mdg && mloc;
-  });
+  const filtered = useMemo(() => {
+    return myTeamMembers.filter((e) => {
+      const ms =
+        (e.name || "").toLowerCase().includes(search.toLowerCase()) ||
+        (e.designation || "").toLowerCase().includes(search.toLowerCase());
+      const d = e.dept || e.department || "";
+      const md = deptFilter === "All" || d === deptFilter;
+      const mst = statusFilter === "All" || (e.status || "") === statusFilter;
+      const mdg = desigFilter === "All" || (e.designation || "") === desigFilter;
+      const loc = e.branch || e.location || "";
+      const mloc = locationFilter === "All" || loc === locationFilter;
+      return ms && md && mst && mdg && mloc;
+    });
+  }, [myTeamMembers, search, deptFilter, statusFilter, desigFilter, locationFilter]);
 
-  const depts = ["All", ...Array.from(new Set(EMPLOYEES.map((e) => e.dept))).sort()];
-  const desigs = ["All", ...Array.from(new Set(EMPLOYEES.map((e) => e.designation))).sort()];
-  const locations = ["All", ...Array.from(new Set(EMPLOYEES.map((e) => e.branch))).sort()];
+  const depts = useMemo(() => {
+    const list = myTeamMembers.map((e) => e.dept || e.department).filter(Boolean);
+    return ["All", ...Array.from(new Set(list))].sort() as string[];
+  }, [myTeamMembers]);
+
+  const desigs = useMemo(() => {
+    const list = myTeamMembers.map((e) => e.designation).filter(Boolean);
+    return ["All", ...Array.from(new Set(list))].sort() as string[];
+  }, [myTeamMembers]);
+
+  const locations = useMemo(() => {
+    const list = myTeamMembers.map((e) => e.branch || e.location).filter(Boolean);
+    return ["All", ...Array.from(new Set(list))].sort() as string[];
+  }, [myTeamMembers]);
 
   // Redesigned Tasks selection
   const [selectedTeamTask, setSelectedTeamTask] = useState<any>(null);
@@ -220,6 +457,7 @@ export function TeamPage({
             setAttendanceSection={setAttendanceSection}
             setLeaveSection={setLeaveSection}
             navigate={navigate}
+            teamMembers={myTeamMembers}
           />
         )}
 
@@ -231,6 +469,9 @@ export function TeamPage({
             depts={depts}
             showCreateDiscussion={showCreateDiscussion}
             setShowCreateDiscussion={setShowCreateDiscussion}
+            teamMembers={myTeamMembers}
+            companyId={companyId}
+            currentUser={currentUserInfo}
           />
         )}
 
@@ -239,6 +480,7 @@ export function TeamPage({
           <AnnouncementsTab
             showCreateAnnouncement={showCreateAnnouncement}
             setShowCreateAnnouncement={setShowCreateAnnouncement}
+            teamMembers={myTeamMembers}
           />
         )}
 

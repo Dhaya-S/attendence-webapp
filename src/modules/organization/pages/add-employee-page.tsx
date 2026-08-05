@@ -295,6 +295,8 @@ export function AddEmployeePage({ navigate }: { navigate: (p: AppPage) => void }
       name: `${firstName} ${lastName}`,
       email: targetEmail,
       workEmail: targetEmail,
+      dob,
+      gender,
       phone,
       personalEmail,
       address,

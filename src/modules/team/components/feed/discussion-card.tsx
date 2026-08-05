@@ -58,6 +58,8 @@ export function DiscussionCard({
   onAddComment,
   onEditComment,
   onDeleteComment,
+  currentUser,
+  teamMembers = [],
 }: {
   post: FeedPost;
   isPinned: boolean;
@@ -81,6 +83,13 @@ export function DiscussionCard({
   ) => void;
   onEditComment: (postId: string, commentId: string, text: string) => void;
   onDeleteComment: (postId: string, commentId: string) => void;
+  currentUser?: {
+    name?: string;
+    email?: string;
+    initials?: string;
+    color?: string;
+  };
+  teamMembers?: any[];
 }) {
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
@@ -268,21 +277,21 @@ export function DiscussionCard({
               {post.dept}
             </span>
             {isPinned && (
-              <span className="text-[9px] font-bold bg-[#EEF2FF] text-[#5C5CFF] px-1.5 py-0.5 rounded uppercase flex items-center gap-1">
+              <span className="text-[9px] font-bold bg-[#EEF2FF] text-[#5C5CFF] px-2 py-0.5 rounded-full uppercase flex items-center gap-1">
                 <Pin size={8} /> Pinned
               </span>
             )}
             {isResolved && (
-              <span className="text-[9px] font-bold bg-green-50 text-green-700 px-1.5 py-0.5 rounded uppercase flex items-center gap-1">
+              <span className="text-[9px] font-bold bg-green-50 text-green-700 px-2 py-0.5 rounded-full uppercase flex items-center gap-1">
                 <CheckCircle size={8} /> Resolved
               </span>
             )}
             {post.priority && (
               <span
                 className={cn(
-                  "text-[9px] font-bold px-1.5 py-0.5 rounded uppercase",
+                  "text-[9px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider",
                   post.priority === "High"
-                    ? "bg-red-50 text-red-600"
+                    ? "bg-red-50 text-red-500"
                     : post.priority === "Medium"
                     ? "bg-amber-50 text-amber-600"
                     : "bg-blue-50 text-blue-600"
@@ -314,25 +323,28 @@ export function DiscussionCard({
             {post.attachments.map((att, i) => (
               <div
                 key={i}
-                className="border border-gray-150 rounded-xl overflow-hidden bg-gray-50 flex items-center gap-3 p-3 max-w-[280px]"
+                className="border border-gray-150 rounded-xl overflow-hidden bg-gray-50 flex items-center gap-3 p-2.5 pr-4 max-w-[320px]"
               >
                 {att.type === "image" ? (
-                  <div className="w-10 h-10 bg-gray-200 rounded flex-shrink-0 flex items-center justify-center font-bold text-white text-xs bg-cover bg-center">
+                  <div className="w-10 h-10 bg-indigo-50 text-[#5C5CFF] rounded-lg flex-shrink-0 flex items-center justify-center font-bold text-xs">
                     🖼️
                   </div>
                 ) : (
-                  <div className="w-10 h-10 bg-red-100 rounded flex-shrink-0 flex items-center justify-center text-red-650 text-xs font-bold">
-                    <FileText size={16} />
+                  <div className="w-10 h-10 bg-red-50 text-red-500 rounded-lg flex-shrink-0 flex items-center justify-center text-xs font-bold">
+                    <FileText size={18} />
                   </div>
                 )}
-                <div className="min-w-0">
-                  <p className="text-xs font-semibold text-gray-808 truncate">
+                <div className="min-w-0 flex-1">
+                  <p className="text-xs font-bold text-gray-800 truncate">
                     {att.name}
                   </p>
                   <p className="text-[10px] text-gray-400">{att.size}</p>
                 </div>
-                <button className="text-xs text-[#5C5CFF] font-semibold hover:underline ml-auto flex items-center gap-0.5 cursor-pointer bg-transparent border-0">
-                  <Download size={11} />
+                <button
+                  type="button"
+                  className="text-xs text-[#5C5CFF] font-semibold hover:underline ml-auto flex items-center gap-1 cursor-pointer bg-transparent border-0"
+                >
+                  <Download size={12} />
                   Download
                 </button>
               </div>
@@ -345,7 +357,7 @@ export function DiscussionCard({
       {post.reactions.length > 0 && (
         <div className="flex items-center gap-1.5 flex-wrap mt-3.5">
           {post.reactions.map((r) => {
-            const hasReacted = r.users.includes("Alex Admin");
+            const hasReacted = r.users.includes(currentUser?.name || "") || (!!currentUser?.email && r.users.includes(currentUser.email));
             return (
               <button
                 key={r.emoji}
@@ -477,7 +489,7 @@ export function DiscussionCard({
                         >
                           <CornerDownRight size={10} />
                         </button>
-                        {comment.author === "Alex Admin" && (
+                        {(comment.author === (currentUser?.name || "") || (!!comment.authorEmail && comment.authorEmail === currentUser?.email) || isManagerOrAdmin) && (
                           <>
                             <button
                               onClick={() => {
@@ -541,7 +553,7 @@ export function DiscussionCard({
                               {reply.text}
                             </p>
                           </div>
-                          {reply.author === "Alex Admin" && (
+                          {(reply.author === (currentUser?.name || "") || (!!reply.authorEmail && reply.authorEmail === currentUser?.email) || isManagerOrAdmin) && (
                             <div className="absolute right-3 top-3 opacity-0 group-hover/reply:opacity-100 transition-opacity flex items-center bg-white border border-gray-150 rounded shadow p-0.5 gap-0.5 z-10">
                               <button
                                 onClick={() => onDeleteComment(post.id, reply.id)}
@@ -592,7 +604,7 @@ export function DiscussionCard({
                             <X size={12} />
                           </button>
                         </div>
-                        <MentionPopup text={replyText} setText={setReplyText} />
+                        <MentionPopup text={replyText} setText={setReplyText} teamMembers={teamMembers} />
                       </div>
                     )}
                   </div>
@@ -602,10 +614,10 @@ export function DiscussionCard({
           )}
 
           {/* New comment input area */}
-          <div className="flex gap-2.5 pt-2 relative">
-            <Avt initials="AA" color="#5C5CFF" size="xs" />
-            <div className="flex-1 flex flex-col gap-1.5">
-              <div className="flex gap-1.5">
+          <div className="flex items-center gap-2.5 pt-2 relative">
+            <Avt initials={currentUser?.initials || "TM"} color={currentUser?.color || "#5C5CFF"} size="xs" />
+            <div className="flex-1 flex items-center gap-2">
+              <div className="flex-1 border border-gray-200 rounded-full px-4 py-1.5 flex items-center gap-2 bg-gray-50/50 focus-within:ring-2 focus-within:ring-[#5C5CFF] focus-within:bg-white transition-all">
                 <input
                   type="text"
                   value={commentText}
@@ -618,40 +630,46 @@ export function DiscussionCard({
                     }
                   }}
                   placeholder="Write a comment..."
-                  className="flex-1 px-3 py-2 text-xs border border-gray-200 rounded-lg outline-none focus:ring-1 focus:ring-[#5C5CFF] bg-gray-50 text-gray-900"
+                  className="w-full bg-transparent border-0 outline-none text-xs text-gray-900 placeholder:text-gray-400 font-medium"
                 />
 
-                {/* Simulated file attachments inside comment */}
-                <button
-                  onClick={() => {
-                    setCommentAttachment({
-                      name: `Attachment_${Date.now()
-                        .toString()
-                        .slice(-4)}.pdf`,
-                    });
-                  }}
-                  className={cn(
-                    "p-1.5 border border-gray-200 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-55 flex items-center justify-center bg-white cursor-pointer",
-                    commentAttachment && "border-[#5C5CFF] text-[#5C5CFF] bg-[#EEF2FF]"
-                  )}
-                  title="Simulate attachment"
-                >
-                  <Paperclip size={13} />
-                </button>
-
-                <button
-                  onClick={() => {
-                    if (commentText.trim()) {
-                      onAddComment(post.id, null, commentText, commentAttachment);
-                      setCommentText("");
-                      setCommentAttachment(null);
-                    }
-                  }}
-                  className="px-3 bg-[#5C5CFF] text-white text-xs font-semibold rounded-lg hover:bg-[#4A4AE0] transition-colors cursor-pointer"
-                >
-                  Post
-                </button>
+                <label className="text-gray-400 hover:text-gray-600 cursor-pointer flex-shrink-0">
+                  <Paperclip size={14} />
+                  <input
+                    type="file"
+                    className="hidden"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) {
+                        setCommentAttachment({
+                          name: file.name,
+                          size: `${(file.size / (1024 * 1024)).toFixed(1)} MB`,
+                        });
+                      }
+                    }}
+                  />
+                </label>
               </div>
+
+              <button
+                type="button"
+                disabled={!commentText.trim()}
+                onClick={() => {
+                  if (commentText.trim()) {
+                    onAddComment(post.id, null, commentText, commentAttachment);
+                    setCommentText("");
+                    setCommentAttachment(null);
+                  }
+                }}
+                className={cn(
+                  "px-4 py-2 rounded-xl text-xs font-bold transition-all border-0",
+                  commentText.trim()
+                    ? "bg-[#5C5CFF] text-white hover:bg-[#4B4BEE] shadow-sm cursor-pointer"
+                    : "bg-[#5C5CFF] text-white/80 cursor-pointer"
+                )}
+              >
+                Post
+              </button>
 
               {commentAttachment && (
                 <div className="flex items-center gap-1.5 text-[9px] text-[#5C5CFF] font-semibold bg-white border border-gray-150 rounded px-2 py-0.5 max-w-[180px]">
@@ -666,7 +684,7 @@ export function DiscussionCard({
                 </div>
               )}
 
-              <MentionPopup text={commentText} setText={setCommentText} />
+              <MentionPopup text={commentText} setText={setCommentText} teamMembers={teamMembers} />
             </div>
           </div>
         </div>

@@ -7,10 +7,12 @@ import {
   Paperclip,
   FileText,
   X,
+  Send,
 } from "lucide-react";
 import { FeedPost, FeedComment } from "../../types";
-import { cn } from "@/shared/utils";
-import { Btn, Modal, Drawer } from "@/shared/components";
+import { cn, db } from "@/shared/utils";
+import { doc, setDoc, deleteDoc } from "firebase/firestore";
+import { Btn, Modal, Drawer, Avt } from "@/shared/components";
 import { DiscussionCard } from "./discussion-card";
 import { MentionPopup } from "./mention-popup";
 
@@ -20,6 +22,17 @@ interface FeedTabProps {
   depts: string[];
   showCreateDiscussion: boolean;
   setShowCreateDiscussion: (b: boolean) => void;
+  teamMembers?: any[];
+  companyId?: string;
+  currentUser?: {
+    name?: string;
+    email?: string;
+    initials?: string;
+    color?: string;
+    designation?: string;
+    dept?: string;
+    role?: string;
+  };
 }
 
 export function FeedTab({
@@ -28,6 +41,9 @@ export function FeedTab({
   depts,
   showCreateDiscussion,
   setShowCreateDiscussion,
+  teamMembers = [],
+  companyId,
+  currentUser,
 }: FeedTabProps) {
   // Feed Filter States
   const [feedPinnedOnly, setFeedPinnedOnly] = useState(false);
@@ -80,39 +96,65 @@ export function FeedTab({
   // Discussion Delete state
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
+  // Firestore Helper Functions
+  const savePostToFirestore = async (post: FeedPost) => {
+    if (!companyId || companyId === "default" || !post) return;
+    try {
+      const docRef = doc(db, "organizations", companyId, "team_feed", post.id);
+      await setDoc(docRef, JSON.parse(JSON.stringify(post)), { merge: true });
+    } catch (err) {
+      console.error("Error saving feed post to Firestore:", err);
+    }
+  };
+
+  const deletePostFromFirestore = async (postId: string) => {
+    if (!companyId || companyId === "default" || !postId) return;
+    try {
+      await deleteDoc(doc(db, "organizations", companyId, "team_feed", postId));
+    } catch (err) {
+      console.error("Error deleting feed post from Firestore:", err);
+    }
+  };
+
   // --- FEED COLLABORATION HELPER FUNCTIONS ---
   const togglePin = (id: string) => {
-    setPosts((prev) =>
-      prev.map((p) => (p.id === id ? { ...p, pinned: !p.pinned } : p))
-    );
+    const p = posts.find((x) => x.id === id);
+    if (!p) return;
+    const updated = { ...p, pinned: !p.pinned };
+    setPosts((prev) => prev.map((item) => (item.id === id ? updated : item)));
+    savePostToFirestore(updated);
   };
 
   const toggleSave = (id: string) => {
-    setPosts((prev) =>
-      prev.map((p) => (p.id === id ? { ...p, saved: !p.saved } : p))
-    );
+    const p = posts.find((x) => x.id === id);
+    if (!p) return;
+    const updated = { ...p, saved: !p.saved };
+    setPosts((prev) => prev.map((item) => (item.id === id ? updated : item)));
+    savePostToFirestore(updated);
   };
 
   const toggleResolve = (id: string) => {
-    setPosts((prev) =>
-      prev.map((p) => (p.id === id ? { ...p, resolved: !p.resolved } : p))
-    );
+    const p = posts.find((x) => x.id === id);
+    if (!p) return;
+    const updated = { ...p, resolved: !p.resolved };
+    setPosts((prev) => prev.map((item) => (item.id === id ? updated : item)));
+    savePostToFirestore(updated);
   };
 
   const toggleFollow = (id: string) => {
-    setPosts((prev) =>
-      prev.map((p) => {
-        if (p.id !== id) return p;
-        const followers = p.followers || [];
-        const isFollowing = followers.includes("Alex Admin");
-        return {
-          ...p,
-          followers: isFollowing
-            ? followers.filter((f) => f !== "Alex Admin")
-            : [...followers, "Alex Admin"],
-        };
-      })
-    );
+    const p = posts.find((x) => x.id === id);
+    if (!p) return;
+    const followers = p.followers || [];
+    const currentUserName = currentUser?.name || currentUser?.email || "Team Member";
+    const isFollowing = followers.includes(currentUserName);
+    const updated = {
+      ...p,
+      followers: isFollowing
+        ? followers.filter((f) => f !== currentUserName)
+        : [...followers, currentUserName],
+    };
+    setPosts((prev) => prev.map((item) => (item.id === id ? updated : item)));
+    savePostToFirestore(updated);
   };
 
   const toggleReaction = (
@@ -120,61 +162,60 @@ export function FeedTab({
     emoji: string,
     commentId?: string
   ) => {
-    const currentUser = "Alex Admin";
-    setPosts((prev) =>
-      prev.map((p) => {
-        if (p.id !== postId) return p;
+    const p = posts.find((x) => x.id === postId);
+    if (!p) return;
+    const currentUserName = currentUser?.name || currentUser?.email || "Team Member";
 
-        if (!commentId) {
-          // Toggle on post
-          const reactions = [...p.reactions];
-          const existing = reactions.find((r) => r.emoji === emoji);
-          if (existing) {
-            if (existing.users.includes(currentUser)) {
-              existing.users = existing.users.filter((u) => u !== currentUser);
-            } else {
-              existing.users.push(currentUser);
-            }
-          } else {
-            reactions.push({ emoji, users: [currentUser] });
-          }
-          return {
-            ...p,
-            reactions: reactions.filter((r) => r.users.length > 0),
-          };
+    let updated: FeedPost;
+    if (!commentId) {
+      // Toggle on post
+      const reactions = [...p.reactions];
+      const existing = reactions.find((r) => r.emoji === emoji);
+      if (existing) {
+        if (existing.users.includes(currentUserName)) {
+          existing.users = existing.users.filter((u) => u !== currentUserName);
         } else {
-          // Toggle on comment
-          const updateComments = (list: FeedComment[]): FeedComment[] => {
-            return list.map((c) => {
-              if (c.id === commentId) {
-                const reactions = [...(c.reactions || [])];
-                const existing = reactions.find((r) => r.emoji === emoji);
-                if (existing) {
-                  if (existing.users.includes(currentUser)) {
-                    existing.users = existing.users.filter(
-                      (u) => u !== currentUser
-                    );
-                  } else {
-                    existing.users.push(currentUser);
-                  }
-                } else {
-                  reactions.push({ emoji, users: [currentUser] });
-                }
-                return {
-                  ...c,
-                  reactions: reactions.filter((r) => r.users.length > 0),
-                };
-              }
-              if (c.replies) {
-                return { ...c, replies: updateComments(c.replies) };
-              }
-              return c;
-            });
-          };
-          return { ...p, comments: updateComments(p.comments) };
+          existing.users.push(currentUserName);
         }
-      })
-    );
+      } else {
+        reactions.push({ emoji, users: [currentUserName] });
+      }
+      updated = {
+        ...p,
+        reactions: reactions.filter((r) => r.users.length > 0),
+      };
+    } else {
+      // Toggle on comment
+      const updateComments = (list: FeedComment[]): FeedComment[] => {
+        return list.map((c) => {
+          if (c.id === commentId) {
+            const reactions = [...(c.reactions || [])];
+            const existing = reactions.find((r) => r.emoji === emoji);
+            if (existing) {
+              if (existing.users.includes(currentUserName)) {
+                existing.users = existing.users.filter((u) => u !== currentUserName);
+              } else {
+                existing.users.push(currentUserName);
+              }
+            } else {
+              reactions.push({ emoji, users: [currentUserName] });
+            }
+            return {
+              ...c,
+              reactions: reactions.filter((r) => r.users.length > 0),
+            };
+          }
+          if (c.replies) {
+            return { ...c, replies: updateComments(c.replies) };
+          }
+          return c;
+        });
+      };
+      updated = { ...p, comments: updateComments(p.comments) };
+    }
+
+    setPosts((prev) => prev.map((item) => (item.id === postId ? updated : item)));
+    savePostToFirestore(updated);
   };
 
   const handleCreatePost = (
@@ -183,25 +224,34 @@ export function FeedTab({
     dept: string,
     attachments: any[]
   ) => {
+    const currentUserName = currentUser?.name || currentUser?.email || "Team Member";
+    const currentUserEmail = currentUser?.email || "";
+    const currentUserInitials = currentUser?.initials || "TM";
+    const currentUserColor = currentUser?.color || "#5C5CFF";
+    const currentUserDesignation = currentUser?.designation || currentUser?.role || "Member";
+
     const newPost: FeedPost = {
-      id: `F${Date.now()}`,
-      author: "Alex Admin",
-      initials: "AA",
-      color: "#5C5CFF",
-      time: "Just now",
+      id: `F_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+      author: currentUserName,
+      authorEmail: currentUserEmail,
+      initials: currentUserInitials,
+      color: currentUserColor,
+      time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+      createdAt: Date.now(),
       text,
-      dept: dept === "All" ? "All" : dept,
-      designation: "VP of HR",
+      dept: dept === "All" ? (currentUser?.dept || "All") : dept,
+      designation: currentUserDesignation,
       pinned: false,
       saved: false,
       priority: priority === "None" ? undefined : priority,
       resolved: false,
       reactions: [],
       comments: [],
-      followers: ["Alex Admin"],
+      followers: [currentUserName],
       attachments: attachments.length > 0 ? attachments : undefined,
     };
     setPosts((prev) => [newPost, ...prev]);
+    savePostToFirestore(newPost);
   };
 
   const handleEditPost = (
@@ -210,23 +260,23 @@ export function FeedTab({
     priority: "High" | "Medium" | "Low" | "None",
     attachments: any[]
   ) => {
-    setPosts((prev) =>
-      prev.map((p) => {
-        if (p.id !== id) return p;
-        return {
-          ...p,
-          text,
-          priority: priority === "None" ? undefined : priority,
-          attachments: attachments.length > 0 ? attachments : undefined,
-          edited: true,
-          editedTime: "Just now",
-        };
-      })
-    );
+    const p = posts.find((x) => x.id === id);
+    if (!p) return;
+    const updated: FeedPost = {
+      ...p,
+      text,
+      priority: priority === "None" ? undefined : priority,
+      attachments: attachments.length > 0 ? attachments : undefined,
+      edited: true,
+      editedTime: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+    };
+    setPosts((prev) => prev.map((item) => (item.id === id ? updated : item)));
+    savePostToFirestore(updated);
   };
 
   const handleDeletePost = (id: string) => {
     setPosts((prev) => prev.filter((p) => p.id !== id));
+    deletePostFromFirestore(id);
   };
 
   const handleAddComment = (
@@ -235,39 +285,45 @@ export function FeedTab({
     text: string,
     attachment?: any
   ) => {
+    const p = posts.find((x) => x.id === postId);
+    if (!p) return;
+    const currentUserName = currentUser?.name || currentUser?.email || "Team Member";
+    const currentUserEmail = currentUser?.email || "";
+    const currentUserInitials = currentUser?.initials || "TM";
+    const currentUserColor = currentUser?.color || "#5C5CFF";
+
     const newComment: FeedComment = {
-      id: `FC${Date.now()}`,
-      author: "Alex Admin",
-      initials: "AA",
-      color: "#5C5CFF",
+      id: `FC_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+      author: currentUserName,
+      authorEmail: currentUserEmail,
+      initials: currentUserInitials,
+      color: currentUserColor,
       text,
-      time: "Just now",
+      time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+      createdAt: Date.now(),
       attachment,
       replies: [],
     };
 
-    setPosts((prev) =>
-      prev.map((p) => {
-        if (p.id !== postId) return p;
-
-        if (!parentCommentId) {
-          return { ...p, comments: [...p.comments, newComment] };
-        } else {
-          const insertReply = (list: FeedComment[]): FeedComment[] => {
-            return list.map((c) => {
-              if (c.id === parentCommentId) {
-                return { ...c, replies: [...(c.replies || []), newComment] };
-              }
-              if (c.replies) {
-                return { ...c, replies: insertReply(c.replies) };
-              }
-              return c;
-            });
-          };
-          return { ...p, comments: insertReply(p.comments) };
-        }
-      })
-    );
+    let updated: FeedPost;
+    if (!parentCommentId) {
+      updated = { ...p, comments: [...p.comments, newComment] };
+    } else {
+      const insertReply = (list: FeedComment[]): FeedComment[] => {
+        return list.map((c) => {
+          if (c.id === parentCommentId) {
+            return { ...c, replies: [...(c.replies || []), newComment] };
+          }
+          if (c.replies) {
+            return { ...c, replies: insertReply(c.replies) };
+          }
+          return c;
+        });
+      };
+      updated = { ...p, comments: insertReply(p.comments) };
+    }
+    setPosts((prev) => prev.map((item) => (item.id === postId ? updated : item)));
+    savePostToFirestore(updated);
   };
 
   const handleEditComment = (
@@ -275,42 +331,45 @@ export function FeedTab({
     commentId: string,
     text: string
   ) => {
-    setPosts((prev) =>
-      prev.map((p) => {
-        if (p.id !== postId) return p;
-        const updateText = (list: FeedComment[]): FeedComment[] => {
-          return list.map((c) => {
-            if (c.id === commentId) {
-              return { ...c, text, edited: true, editedTime: "Just now" };
-            }
-            if (c.replies) {
-              return { ...c, replies: updateText(c.replies) };
-            }
-            return c;
-          });
-        };
-        return { ...p, comments: updateText(p.comments) };
-      })
-    );
+    const p = posts.find((x) => x.id === postId);
+    if (!p) return;
+    const updateText = (list: FeedComment[]): FeedComment[] => {
+      return list.map((c) => {
+        if (c.id === commentId) {
+          return {
+            ...c,
+            text,
+            edited: true,
+            editedTime: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+          };
+        }
+        if (c.replies) {
+          return { ...c, replies: updateText(c.replies) };
+        }
+        return c;
+      });
+    };
+    const updated = { ...p, comments: updateText(p.comments) };
+    setPosts((prev) => prev.map((item) => (item.id === postId ? updated : item)));
+    savePostToFirestore(updated);
   };
 
   const handleDeleteComment = (postId: string, commentId: string) => {
-    setPosts((prev) =>
-      prev.map((p) => {
-        if (p.id !== postId) return p;
-        const removeComment = (list: FeedComment[]): FeedComment[] => {
-          return list
-            .filter((c) => c.id !== commentId)
-            .map((c) => {
-              if (c.replies) {
-                return { ...c, replies: removeComment(c.replies) };
-              }
-              return c;
-            });
-        };
-        return { ...p, comments: removeComment(p.comments) };
-      })
-    );
+    const p = posts.find((x) => x.id === postId);
+    if (!p) return;
+    const removeComment = (list: FeedComment[]): FeedComment[] => {
+      return list
+        .filter((c) => c.id !== commentId)
+        .map((c) => {
+          if (c.replies) {
+            return { ...c, replies: removeComment(c.replies) };
+          }
+          return c;
+        });
+    };
+    const updated = { ...p, comments: removeComment(p.comments) };
+    setPosts((prev) => prev.map((item) => (item.id === postId ? updated : item)));
+    savePostToFirestore(updated);
   };
 
   return (
@@ -355,6 +414,200 @@ export function FeedTab({
               <SlidersHorizontal size={13} />
               <span>Filter</span>
             </button>
+          </div>
+        </div>
+
+        {/* Inline Create Discussion Input Card (Exact UI match) */}
+        <div className="bg-white border border-gray-200 rounded-2xl shadow-sm mb-5 overflow-hidden text-left">
+          <div className="p-4 pb-3 flex gap-3 items-start">
+            <Avt initials={currentUser?.initials || "TM"} color={currentUser?.color || "#5C5CFF"} size="sm" />
+            <div className="flex-1 relative">
+              <textarea
+                rows={3}
+                value={newDiscText}
+                onChange={(e) => setNewDiscText(e.target.value)}
+                placeholder="Share an update, ask a question, or @mention someone..."
+                className="w-full text-xs border-0 outline-none resize-none text-gray-900 placeholder:text-gray-400 bg-transparent p-0 font-medium"
+              />
+              <MentionPopup text={newDiscText} setText={setNewDiscText} teamMembers={teamMembers} />
+            </div>
+          </div>
+
+          {/* Formatting & Emoji Toolbar */}
+          <div className="border-t border-b border-gray-100 px-4 py-2 flex items-center gap-3 text-xs text-gray-500 flex-wrap bg-white">
+            <button
+              type="button"
+              onClick={() => setNewDiscText((prev) => prev + " **bold** ")}
+              className="font-bold text-gray-700 hover:text-[#5C5CFF] px-1 bg-transparent border-0 cursor-pointer"
+              title="Bold"
+            >
+              B
+            </button>
+            <button
+              type="button"
+              onClick={() => setNewDiscText((prev) => prev + " *italic* ")}
+              className="italic text-gray-700 hover:text-[#5C5CFF] px-1 bg-transparent border-0 cursor-pointer"
+              title="Italic"
+            >
+              I
+            </button>
+            <button
+              type="button"
+              onClick={() => setNewDiscText((prev) => prev + " <u>underline</u> ")}
+              className="underline text-gray-700 hover:text-[#5C5CFF] px-1 bg-transparent border-0 cursor-pointer"
+              title="Underline"
+            >
+              U
+            </button>
+            <button
+              type="button"
+              onClick={() => setNewDiscText((prev) => prev + " ~~strikethrough~~ ")}
+              className="line-through text-gray-700 hover:text-[#5C5CFF] px-1 bg-transparent border-0 cursor-pointer"
+              title="Strikethrough"
+            >
+              S
+            </button>
+            <span className="text-gray-300">|</span>
+            <button
+              type="button"
+              onClick={() => setNewDiscText((prev) => prev + "\n• ")}
+              className="text-gray-600 hover:text-[#5C5CFF] bg-transparent border-0 cursor-pointer"
+              title="Bullet list"
+            >
+              • List
+            </button>
+            <button
+              type="button"
+              onClick={() => setNewDiscText((prev) => prev + "\n1. ")}
+              className="text-gray-600 hover:text-[#5C5CFF] bg-transparent border-0 cursor-pointer"
+              title="Numbered list"
+            >
+              1. List
+            </button>
+            <button
+              type="button"
+              onClick={() => setNewDiscText((prev) => prev + '\n> "Quote"')}
+              className="text-gray-600 hover:text-[#5C5CFF] bg-transparent border-0 cursor-pointer"
+              title="Quote"
+            >
+              “ ” Quote
+            </button>
+            <button
+              type="button"
+              onClick={() => setNewDiscText((prev) => prev + " [Link](https://) ")}
+              className="text-gray-600 hover:text-[#5C5CFF] bg-transparent border-0 cursor-pointer"
+              title="Add Link"
+            >
+              Link
+            </button>
+
+            <span className="text-gray-300 mx-1">|</span>
+
+            {["💡", "❓", "🚀", "👍", "🔥"].map((emoji) => (
+              <button
+                key={emoji}
+                type="button"
+                onClick={() => setNewDiscText((prev) => prev + ` ${emoji} `)}
+                className="hover:scale-110 transition-transform bg-transparent border-0 cursor-pointer text-sm"
+              >
+                {emoji}
+              </button>
+            ))}
+          </div>
+
+          {/* Bottom Row */}
+          <div className="px-4 py-3 flex items-center justify-between bg-white">
+            <div className="flex items-center gap-2">
+              <label className="flex items-center gap-1.5 text-xs font-semibold text-[#5C5CFF] hover:underline cursor-pointer">
+                <Paperclip size={14} />
+                <span>+ Add File</span>
+                <input
+                  type="file"
+                  className="hidden"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) {
+                      setNewDiscAttachments((prev) => [
+                        ...prev,
+                        {
+                          name: file.name,
+                          type: file.type.startsWith("image/") ? "image" : "file",
+                          size: `${(file.size / (1024 * 1024)).toFixed(1)} MB`,
+                        },
+                      ]);
+                    }
+                  }}
+                />
+              </label>
+
+              {newDiscAttachments.length > 0 && (
+                <div className="flex flex-wrap gap-1.5 ml-2">
+                  {newDiscAttachments.map((att, idx) => (
+                    <span
+                      key={idx}
+                      className="inline-flex items-center gap-1 px-2 py-0.5 bg-indigo-50 text-[#5C5CFF] border border-indigo-100 rounded-md text-[10px] font-semibold"
+                    >
+                      <FileText size={10} />
+                      <span className="max-w-[100px] truncate">{att.name}</span>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setNewDiscAttachments((prev) =>
+                            prev.filter((_, i) => i !== idx)
+                          )
+                        }
+                        className="text-gray-400 hover:text-red-500 bg-transparent border-0 cursor-pointer ml-1"
+                      >
+                        <X size={10} />
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="flex items-center gap-3">
+              <div className="flex items-center gap-1.5">
+                <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">
+                  PRIORITY:
+                </span>
+                <select
+                  value={newDiscPriority}
+                  onChange={(e) => setNewDiscPriority(e.target.value as any)}
+                  className="text-xs bg-gray-50 border border-gray-200 rounded-lg px-2.5 py-1 outline-none text-gray-700 font-medium cursor-pointer"
+                >
+                  <option value="None">None</option>
+                  <option value="Low">Low</option>
+                  <option value="Medium">Medium</option>
+                  <option value="High">High</option>
+                </select>
+              </div>
+
+              <button
+                type="button"
+                disabled={!newDiscText.trim()}
+                onClick={() => {
+                  handleCreatePost(
+                    newDiscText,
+                    newDiscPriority,
+                    newDiscDept,
+                    newDiscAttachments
+                  );
+                  setNewDiscText("");
+                  setNewDiscPriority("None");
+                  setNewDiscDept("All");
+                  setNewDiscAttachments([]);
+                }}
+                className={cn(
+                  "px-5 py-1.5 rounded-full text-xs font-bold transition-all border-0",
+                  newDiscText.trim()
+                    ? "bg-[#5C5CFF] text-white hover:bg-[#4B4BEE] shadow-sm cursor-pointer"
+                    : "bg-gray-100 text-gray-400 cursor-not-allowed"
+                )}
+              >
+                Send
+              </button>
+            </div>
           </div>
         </div>
 
@@ -413,9 +666,10 @@ export function FeedTab({
               const isPinned = p.pinned;
               const isSaved = p.saved || false;
               const isResolved = p.resolved || false;
-              const isFollower = (p.followers || []).includes("Alex Admin");
-              const isAuthor = p.author === "Alex Admin";
-              const isManagerOrAdmin = true;
+              const currentUserName = currentUser?.name || currentUser?.email || "";
+              const isFollower = (p.followers || []).includes(currentUserName) || (!!currentUser?.email && (p.followers || []).includes(currentUser.email));
+              const isAuthor = p.author === currentUserName || (!!p.authorEmail && p.authorEmail === currentUser?.email);
+              const isManagerOrAdmin = String(currentUser?.role || "").toLowerCase().includes("admin") || String(currentUser?.role || "").toLowerCase() === "manager";
 
               return (
                 <DiscussionCard
@@ -427,6 +681,8 @@ export function FeedTab({
                   isFollower={isFollower}
                   isAuthor={isAuthor}
                   isManagerOrAdmin={isManagerOrAdmin}
+                  currentUser={currentUser}
+                  teamMembers={teamMembers}
                   onTogglePin={togglePin}
                   onToggleSave={toggleSave}
                   onToggleResolve={toggleResolve}
@@ -584,7 +840,7 @@ export function FeedTab({
                 placeholder="Type your message... use @ to mention teammates"
                 className="w-full text-xs border border-gray-200 rounded-lg p-3 outline-none focus:ring-2 focus:ring-[#5C5CFF] resize-none text-gray-900 bg-white"
               />
-              <MentionPopup text={newDiscText} setText={setNewDiscText} />
+              <MentionPopup text={newDiscText} setText={setNewDiscText} teamMembers={teamMembers} />
             </div>
 
             <div className="grid grid-cols-2 gap-3">
@@ -741,6 +997,7 @@ export function FeedTab({
                 setText={(t) =>
                   setEditingPost((prev) => (prev ? { ...prev, text: t } : null))
                 }
+                teamMembers={teamMembers}
               />
             </div>
 

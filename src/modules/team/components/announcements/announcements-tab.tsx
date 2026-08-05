@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useMemo } from "react";
 import {
   Send,
   Star,
@@ -14,13 +14,68 @@ import { TEAM_CELEBRATIONS } from "../../data/team-data";
 interface AnnouncementsTabProps {
   showCreateAnnouncement: boolean;
   setShowCreateAnnouncement: (b: boolean) => void;
+  teamMembers?: any[];
 }
 
 export function AnnouncementsTab({
   showCreateAnnouncement,
   setShowCreateAnnouncement,
+  teamMembers,
 }: AnnouncementsTabProps) {
   const [teamAnnDetailId, setTeamAnnDetailId] = useState<string | null>(null);
+
+  const today = useMemo(() => new Date(), []);
+  const currentMonth = useMemo(() => today.getMonth(), [today]);
+  const todayDate = useMemo(() => today.getDate(), [today]);
+  const baseMembers = teamMembers || [];
+
+  const celebrations = useMemo(() => {
+    const list: any[] = [];
+    baseMembers.forEach((emp) => {
+      // Birthdays
+      if (emp.dob) {
+        try {
+          const dobDate = new Date(emp.dob);
+          if (!isNaN(dobDate.getTime()) && dobDate.getMonth() === currentMonth) {
+            const isToday = dobDate.getDate() === todayDate;
+            const age = today.getFullYear() - dobDate.getFullYear();
+            list.push({
+              type: "Birthday",
+              employee: emp.name || emp.email,
+              detail: isToday ? `Turning ${age} today 🎂` : `Turning ${age} on ${dobDate.toLocaleDateString("en-US", { month: "short", day: "numeric" })}`,
+              date: isToday ? "Today" : dobDate.toLocaleDateString("en-US", { month: "short", day: "numeric" }),
+              color: emp.color || "#EC4899",
+            });
+          }
+        } catch (_) {}
+      }
+      
+      // Anniversaries
+      const joinStr = emp.joinDate || emp.createdAt;
+      if (joinStr) {
+        try {
+          const joinD = new Date(joinStr);
+          if (!isNaN(joinD.getTime()) && joinD.getMonth() === currentMonth) {
+            const years = today.getFullYear() - joinD.getFullYear();
+            if (years > 0) {
+              list.push({
+                type: "Anniversary",
+                employee: emp.name || emp.email,
+                detail: `${years} year${years > 1 ? 's' : ''} at Acme 🎉`,
+                date: joinD.toLocaleDateString("en-US", { month: "short", day: "numeric" }),
+                color: emp.color || "#8B5CF6",
+              });
+            }
+          }
+        } catch (_) {}
+      }
+    });
+
+    if (list.length === 0) {
+      return TEAM_CELEBRATIONS;
+    }
+    return list;
+  }, [baseMembers, currentMonth, todayDate, today]);
 
   const TEAM_ANN = [
     {
@@ -108,7 +163,7 @@ export function AnnouncementsTab({
               Celebrations &amp; Milestones
             </p>
             <div className="grid grid-cols-3 gap-3">
-              {TEAM_CELEBRATIONS.map((c, i) => (
+              {celebrations.map((c, i) => (
                 <div
                   key={i}
                   className="bg-white border border-gray-200 rounded-xl p-4 hover:border-[#5C5CFF]/30 hover:shadow-sm transition-all cursor-pointer"
