@@ -9,7 +9,7 @@ import {
   ChevronDown, Star, Award, User, Phone, Briefcase
 } from "lucide-react";
 import { cn, fmtDate, db, auth } from "@/shared/utils";
-import { doc, setDoc, onSnapshot, getDoc } from "firebase/firestore";
+import { doc, setDoc, onSnapshot, getDoc, collection } from "firebase/firestore";
 import { useAuth, FeaturePermissions, DEFAULT_FEATURE_PERMISSIONS } from "@/shared/context/AuthContext";
 import { Employee } from "@/shared/types";
 import { EMPLOYEES } from "@/modules/organization/data/employees";
@@ -118,19 +118,52 @@ function UsersSection() {
     }
   };
 
-  const depts = ["All",...Array.from(new Set(EMPLOYEES.map(e=>e.dept))).sort()];
-  const filtered = EMPLOYEES.filter(e=>{
-    const matchStatus = userTab==="Active"?e.status==="Active":userTab==="Inactive"?e.status==="Inactive":userTab==="On Leave"?e.status==="On Leave":true;
+  const [realtimeEmps, setRealtimeEmps] = useState<any[]>([]);
+
+  useEffect(() => {
+    if (!companyId || companyId === "default") return;
+    const unsub = onSnapshot(collection(db, "organizations", companyId, "users"), (snap) => {
+      setRealtimeEmps(snap.docs.map(d => {
+        const u = d.data();
+        const email = u.email || "";
+        const id = d.id;
+        const name = u.name || `${u.firstName || ""} ${u.lastName || ""}`.trim() || email.split("@")[0] || id;
+        return {
+          id: id,
+          name: name,
+          email: email,
+          role: u.role || "Employee",
+          dept: u.dept || "Unassigned",
+          status: (u.status === "approved" || !u.status) ? "Active" : u.status,
+          initials: name.substring(0, 2).toUpperCase(),
+          color: EMP_COLORS[id.length % EMP_COLORS.length] || EMP_COLORS[0],
+          ...u
+        };
+      }));
+    });
+    return () => unsub();
+  }, [companyId]);
+
+  const allUsers = realtimeEmps;
+  const pendingUsers = allUsers.filter(e => e.status?.toLowerCase() === "pending" || e.status?.toLowerCase() === "invited");
+  const nonPendingUsers = allUsers.filter(e => e.status?.toLowerCase() !== "pending" && e.status?.toLowerCase() !== "invited");
+
+  const depts = ["All", ...Array.from(new Set(allUsers.map(e => e.dept))).sort()];
+  
+  const filtered = nonPendingUsers.filter(e=>{
+    const matchStatus = userTab==="Active"? (e.status==="Active" || e.status==="approved") : userTab==="Inactive"?e.status==="Inactive":userTab==="On Leave"?e.status==="On Leave":true;
     const matchSearch = !search||e.name.toLowerCase().includes(search.toLowerCase())||e.email.toLowerCase().includes(search.toLowerCase())||e.id.toLowerCase().includes(search.toLowerCase());
     const matchDept = deptFilter==="All"||e.dept===deptFilter;
     return matchStatus&&matchSearch&&matchDept;
   });
 
-  const PENDING = [
-    {email:"john.smith@acmecorp.com",role:"Employee",dept:"Engineering",invited:"Jun 28",by:"Aisha Thompson"},
-    {email:"sarah.jones@acmecorp.com",role:"Manager",dept:"Sales",invited:"Jun 30",by:"Alex Admin"},
-    {email:"mike.chen@acmecorp.com",role:"Employee",dept:"Design",invited:"Jul 1",by:"Alex Admin"},
-  ];
+  const PENDING = pendingUsers.map(p => ({
+    email: p.email,
+    role: p.role,
+    dept: p.dept,
+    invited: p.createdAt ? fmtDate(p.createdAt) : "Recently",
+    by: "Admin"
+  }));
 
   return (
     <div className="flex h-full overflow-hidden">
@@ -160,7 +193,7 @@ function UsersSection() {
               <button key={t} onClick={()=>setUserTab(t)} className={cn("px-3 py-1.5 text-xs font-medium rounded-lg transition-colors",userTab===t?"bg-[#EEF2FF] text-[#5C5CFF]":"text-gray-500 hover:bg-gray-100")}>
                 {t}
                 <span className={cn("ml-1.5 px-1.5 py-0.5 rounded-full text-[10px] font-semibold",userTab===t?"bg-[#5C5CFF] text-white":"bg-gray-200 text-gray-500")}>
-                  {t==="Active"?EMPLOYEES.filter(e=>e.status==="Active").length:t==="Inactive"?EMPLOYEES.filter(e=>e.status==="Inactive").length:t==="On Leave"?EMPLOYEES.filter(e=>e.status==="On Leave").length:PENDING.length}
+                  {t==="Active"?nonPendingUsers.filter(e=>e.status==="Active"||e.status==="approved").length:t==="Inactive"?nonPendingUsers.filter(e=>e.status==="Inactive").length:t==="On Leave"?nonPendingUsers.filter(e=>e.status==="On Leave").length:PENDING.length}
                 </span>
               </button>
             ))}
@@ -199,7 +232,7 @@ function UsersSection() {
                       </button>
                     </td>
                     <td className="px-4 py-3 text-xs text-gray-600">{emp.dept}</td>
-                    <td className="px-4 py-3"><span className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded">Employee</span></td>
+                    <td className="px-4 py-3"><span className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded">{emp.role}</span></td>
                     <td className="px-4 py-3"><StatusBadge status={emp.status}/></td>
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -405,12 +438,12 @@ function OrgSetupSection() {
   const [saveSuccess, setSaveSuccess] = useState(false);
 
   // Form states for Organization Details
-  const [orgName, setOrgName] = useState("Acme Corporation");
-  const [portalName, setPortalName] = useState("acme");
+  const [orgName, setOrgName] = useState("");
+  const [portalName, setPortalName] = useState("");
   const [businessType, setBusinessType] = useState("Private Ltd");
   const [industry, setIndustry] = useState("Technology");
   const [employeeCount, setEmployeeCount] = useState("1–10");
-  const [website, setWebsite] = useState("https://acmecorp.com");
+  const [website, setWebsite] = useState("");
   const [timezone, setTimezone] = useState("(UTC+5:30) IST");
   const [dateFormat, setDateFormat] = useState("DD/MM/YYYY");
   const [weekStartDay, setWeekStartDay] = useState("Monday");
@@ -435,30 +468,10 @@ function OrgSetupSection() {
   const [editPolicyType, setEditPolicyType] = useState<"Attendance" | "Leave" | "WFH" | null>(null);
 
   // Structure lists from Firestore
-  const [locations, setLocations] = useState<any[]>([
-    {name:"New York HQ",type:"Headquarters",addr:"350 Fifth Avenue, New York, NY",emp:412},
-    {name:"San Francisco",type:"Regional Office",addr:"101 California St, San Francisco, CA",emp:178},
-    {name:"Chicago",type:"Regional Office",addr:"233 S Wacker Drive, Chicago, IL",emp:142},
-    {name:"Austin",type:"Regional Office",addr:"300 W 6th Street, Austin, TX",emp:115},
-  ]);
-  const [departments, setDepartments] = useState<any[]>([
-    {name:"Engineering",head:"David Chen",count:234,sub:3,active:true,color:"#5C5CFF"},
-    {name:"Sales",head:"Aisha Thompson",count:156,sub:2,active:true,color:"#22C55E"},
-    {name:"Marketing",head:"Carlos Rivera",count:98,sub:1,active:true,color:"#F59E0B"},
-    {name:"Finance",head:"Jennifer Walsh",count:72,sub:2,active:true,color:"#EF4444"},
-    {name:"HR",head:"Aisha Thompson",count:48,sub:1,active:true,color:"#3B82F6"},
-    {name:"Design",head:"Priya Sharma",count:64,sub:1,active:true,color:"#8B5CF6"},
-    {name:"Operations",head:"Ahmad Patel",count:87,sub:2,active:false,color:"#06B6D4"}
-  ]);
-  const [designations, setDesignations] = useState<any[]>([
-    ["VP Engineering","Senior Management","Engineering","1"],
-    ["Senior Software Engineer","Senior","Engineering","42"],
-    ["Product Manager","Mid","Product","12"],
-    ["Lead UX Designer","Senior","Design","4"],
-    ["HR Manager","Senior","HR","2"],
-    ["Financial Analyst","Mid","Finance","8"],
-    ["Marketing Specialist","Junior","Marketing","15"]
-  ]);
+  const [levels, setLevels] = useState<any[]>([]);
+  const [locations, setLocations] = useState<any[]>([]);
+  const [departments, setDepartments] = useState<any[]>([]);
+  const [designations, setDesignations] = useState<any[]>([]);
 
   const [showAddDept, setShowAddDept] = useState(false);
   const [showAddLoc, setShowAddLoc] = useState(false);
@@ -470,6 +483,19 @@ function OrgSetupSection() {
   const [newDeptName, setNewDeptName] = useState("");
   const [newDeptHead, setNewDeptHead] = useState("Assign later");
   const [newDeptParent, setNewDeptParent] = useState("None (Top-level)");
+  const [realtimeCompanyEmps, setRealtimeCompanyEmps] = useState<any[]>([]);
+
+  useEffect(() => {
+    if (!targetCompanyId || targetCompanyId === "default") return;
+    try {
+      onSnapshot(collection(db, "organizations", targetCompanyId, "users"), (snap) => {
+        setRealtimeCompanyEmps(snap.docs.map(d => {
+          const u = d.data();
+          return { id: d.id, name: u.name || `${u.firstName || ""} ${u.lastName || ""}`.trim() || u.email, ...u };
+        }));
+      });
+    } catch (_) {}
+  }, [targetCompanyId]);
 
   // 1. Real-time Firestore Listener on /organizations/{companyId}
   useEffect(() => {
@@ -510,14 +536,29 @@ function OrgSetupSection() {
         }
 
         if (Array.isArray(d.locations) && d.locations.length > 0) setLocations(d.locations);
-        if (Array.isArray(d.departments) && d.departments.length > 0) setDepartments(d.departments);
-        if (Array.isArray(d.designations) && d.designations.length > 0) setDesignations(d.designations);
+        if (Array.isArray(d.levels) && d.levels.length > 0) setLevels(d.levels);
       }
     }, (err) => {
       console.warn("Error listening to organization setup:", err);
     });
 
-    return () => unsub();
+    // Listen to departments subcollection as the single source of truth
+    const unsubDepts = onSnapshot(collection(db, "organizations", targetCompanyId, "departments"), (snap) => {
+      if (!snap.empty) {
+        const list = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        setDepartments(list);
+      }
+    });
+
+    // Listen to designations subcollection as the single source of truth
+    const unsubDesigs = onSnapshot(collection(db, "organizations", targetCompanyId, "designations"), (snap) => {
+      if (!snap.empty) {
+        const list = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        setDesignations(list);
+      }
+    });
+
+    return () => { unsub(); unsubDepts(); unsubDesigs(); };
   }, [targetCompanyId]);
 
   // Save changes handler to Firestore
@@ -591,7 +632,7 @@ function OrgSetupSection() {
       name: `${newLocCity} Branch`,
       type: "Regional Office",
       addr: `${newLocAddr}, ${newLocCity}, ${newLocState}`,
-      emp: 1,
+      emp: 0,
     };
     const updatedLocs = [newLoc, ...locations];
     setLocations(updatedLocs);
@@ -602,19 +643,36 @@ function OrgSetupSection() {
 
   const handleAddDepartmentSubmit = async () => {
     if (!newDeptName.trim()) return;
-    const newDept = {
-      name: newDeptName,
-      head: newDeptHead,
-      count: 1,
+    const dId = `D_${Date.now()}`;
+    const newDeptObj = {
+      id: dId,
+      name: newDeptName.trim(),
+      code: newDeptName.trim().substring(0, 3).toUpperCase(),
+      head: newDeptHead.trim(),
+      parent: newDeptParent.trim(),
+      count: 0,
       sub: 0,
       active: true,
       color: "#5C5CFF",
+      createdAt: new Date().toISOString(),
     };
-    const updatedDepts = [newDept, ...departments];
-    setDepartments(updatedDepts);
+
     setShowAddDept(false);
     setNewDeptName("");
-    await handleSaveOrgSetup({ departments: updatedDepts });
+
+    if (targetCompanyId && targetCompanyId !== "default") {
+      try {
+        // Write to subcollection — the onSnapshot listener will update the UI
+        await setDoc(doc(db, "organizations", targetCompanyId, "departments", dId), newDeptObj, { merge: true });
+      } catch (err) {
+        console.error("Error writing department to subcollection:", err);
+        // Fallback: add locally if Firestore write fails
+        setDepartments(prev => [newDeptObj, ...prev]);
+      }
+    } else {
+      // No company ID — just add locally
+      setDepartments(prev => [newDeptObj, ...prev]);
+    }
   };
 
   return (
@@ -648,21 +706,21 @@ function OrgSetupSection() {
                   <span className="text-[9px] text-gray-400">Upload Logo</span>
                 </div>
                 <div className="flex-1 space-y-3">
-                  <InputField label="Organization Name" value={orgName} onChange={e=>setOrgName(e.target.value)} required/>
+                  <InputField label="Organization Name" value={orgName} onChange={(v: any) => setOrgName(String(v?.target?.value ?? v))} required/>
                   <div className="grid grid-cols-2 gap-3">
-                    <InputField label="Portal Subdomain" value={portalName} onChange={e=>setPortalName(e.target.value)}/>
-                    <SelectField label="Business Type" value={businessType} onChange={e=>setBusinessType(e.target.value)} options={["Private Ltd","Public Ltd","Partnership","NGO","Government"]}/>
+                    <InputField label="Portal Subdomain" value={portalName} onChange={(v: any) => setPortalName(String(v?.target?.value ?? v))}/>
+                    <SelectField label="Business Type" value={businessType} onChange={(v: any) => setBusinessType(String(v?.target?.value ?? v))} options={["Private Ltd","Public Ltd","Partnership","NGO","Government"]}/>
                   </div>
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-4">
-                <SelectField label="Industry" value={industry} onChange={e=>setIndustry(e.target.value)} options={["Technology","Finance","Healthcare","Manufacturing","Retail","Education","Consulting"]}/>
-                <SelectField label="Employee Count" value={employeeCount} onChange={e=>setEmployeeCount(e.target.value)} options={["1–10","11–50","51–200","201–500","501–1000","1000+"]}/>
-                <InputField label="Website" value={website} onChange={e=>setWebsite(e.target.value)} type="url"/>
-                <SelectField label="Timezone" value={timezone} onChange={e=>setTimezone(e.target.value)} options={["(UTC-8) Pacific","(UTC-5) Eastern","(UTC+0) UTC","(UTC+5:30) IST"]}/>
-                <SelectField label="Date Format" value={dateFormat} onChange={e=>setDateFormat(e.target.value)} options={["MM/DD/YYYY","DD/MM/YYYY","YYYY-MM-DD"]}/>
-                <SelectField label="Week Start" value={weekStartDay} onChange={e=>setWeekStartDay(e.target.value)} options={["Monday","Sunday"]}/>
-                <SelectField label="Language" value={language} onChange={e=>setLanguage(e.target.value)} options={["English (US)","English (UK)","French","German","Spanish"]}/>
+                <SelectField label="Industry" value={industry} onChange={(v: any) => setIndustry(String(v?.target?.value ?? v))} options={["Technology","Finance","Healthcare","Manufacturing","Retail","Education","Consulting"]}/>
+                <SelectField label="Employee Count" value={employeeCount} onChange={(v: any) => setEmployeeCount(String(v?.target?.value ?? v))} options={["1–10","11–50","51–200","201–500","501–1000","1000+"]}/>
+                <InputField label="Website" value={website} onChange={(v: any) => setWebsite(String(v?.target?.value ?? v))} type="url"/>
+                <SelectField label="Timezone" value={timezone} onChange={(v: any) => setTimezone(String(v?.target?.value ?? v))} options={["(UTC-8) Pacific","(UTC-5) Eastern","(UTC+0) UTC","(UTC+5:30) IST"]}/>
+                <SelectField label="Date Format" value={dateFormat} onChange={(v: any) => setDateFormat(String(v?.target?.value ?? v))} options={["MM/DD/YYYY","DD/MM/YYYY","YYYY-MM-DD"]}/>
+                <SelectField label="Week Start" value={weekStartDay} onChange={(v: any) => setWeekStartDay(String(v?.target?.value ?? v))} options={["Monday","Sunday"]}/>
+                <SelectField label="Language" value={language} onChange={(v: any) => setLanguage(String(v?.target?.value ?? v))} options={["English (US)","English (UK)","French","German","Spanish"]}/>
               </div>
             </div>
           </div>
@@ -701,15 +759,19 @@ function OrgSetupSection() {
             </SectionHeader>
             <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
               <div className="p-5 space-y-3">
-                {[["CEO","Executive","1"],["VP","Senior Management","3"],["Director","Management","8"],["Manager","Team Lead","24"],["Employee","Individual Contributor","811"]].map(([level,desc,count])=>(
-                  <div key={level} className="flex items-center gap-4 p-3 border border-gray-100 rounded-lg hover:border-[#5C5CFF]/20 transition-colors">
-                    <div className="w-8 h-8 rounded-lg bg-[#EEF2FF] flex items-center justify-center flex-shrink-0"><Users size={14} className="text-[#5C5CFF]"/></div>
-                    <div className="flex-1"><p className="text-sm font-medium text-gray-800">{level}</p><p className="text-xs text-gray-400">{desc}</p></div>
-                    <span className="text-sm font-bold text-gray-800">{count}</span>
-                    <span className="text-xs text-gray-400">people</span>
-                    <div className="flex gap-1"><button className="p-1.5 hover:bg-gray-100 rounded text-gray-400 hover:text-gray-600"><Edit size={12}/></button><button className="p-1.5 hover:bg-gray-100 rounded text-gray-400 hover:text-red-500"><Trash2 size={12}/></button></div>
-                  </div>
-                ))}
+                {levels.length === 0 ? (
+                  <div className="text-sm text-gray-500 text-center py-4">No organization levels defined yet.</div>
+                ) : (
+                  levels.map((l: any)=>(
+                    <div key={l.level} className="flex items-center gap-4 p-3 border border-gray-100 rounded-lg hover:border-[#5C5CFF]/20 transition-colors">
+                      <div className="w-8 h-8 rounded-lg bg-[#EEF2FF] flex items-center justify-center flex-shrink-0"><Users size={14} className="text-[#5C5CFF]"/></div>
+                      <div className="flex-1"><p className="text-sm font-medium text-gray-800">{l.level}</p><p className="text-xs text-gray-400">{l.desc}</p></div>
+                      <span className="text-sm font-bold text-gray-800">{l.count || 0}</span>
+                      <span className="text-xs text-gray-400">people</span>
+                      <div className="flex gap-1"><button className="p-1.5 hover:bg-gray-100 rounded text-gray-400 hover:text-gray-600"><Edit size={12}/></button><button className="p-1.5 hover:bg-gray-100 rounded text-gray-400 hover:text-red-500"><Trash2 size={12}/></button></div>
+                    </div>
+                  ))
+                )}
               </div>
             </div>
           </div>
@@ -730,7 +792,7 @@ function OrgSetupSection() {
                       <td className="px-4 py-3"><div className="flex items-center gap-2"><div className="w-7 h-7 rounded-lg bg-blue-50 flex items-center justify-center flex-shrink-0"><MapPin size={12} className="text-blue-500"/></div><span className="text-sm font-medium text-gray-800">{l.name}</span></div></td>
                       <td className="px-4 py-3"><span className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded">{l.type}</span></td>
                       <td className="px-4 py-3 text-xs text-gray-500">{l.addr}</td>
-                      <td className="px-4 py-3 text-xs font-semibold text-gray-800">{l.emp}</td>
+                      <td className="px-4 py-3 text-xs font-semibold text-gray-800">{realtimeCompanyEmps.filter(e => { const b = (e.branch || e.location || "").toLowerCase(); const n = (l.name || "").toLowerCase(); return b === n || b.includes(n.replace(" branch", "")) }).length}</td>
                       <td className="px-4 py-3"><div className="flex gap-1"><button className="p-1.5 hover:bg-gray-100 rounded text-gray-400 hover:text-gray-600"><Edit size={12}/></button><button className="p-1.5 hover:bg-red-50 rounded text-gray-400 hover:text-red-500"><Trash2 size={12}/></button></div></td>
                     </tr>
                   ))}
@@ -751,11 +813,11 @@ function OrgSetupSection() {
                 <TableHead cols={["Department","Head","Members","Sub-Departments","Status","Actions"]}/>
                 <tbody className="divide-y divide-gray-100">
                   {departments.map(d=>(
-                    <tr key={d.name} className="hover:bg-gray-50">
+                    <tr key={d.id || d.name} className="hover:bg-gray-50">
                       <td className="px-4 py-3"><div className="flex items-center gap-2"><div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{backgroundColor:d.color || "#5C5CFF"}}/><span className="text-sm font-medium text-gray-800">{d.name}</span></div></td>
-                      <td className="px-4 py-3 text-xs text-gray-600">{d.head}</td>
-                      <td className="px-4 py-3 text-xs font-semibold text-gray-800">{d.count}</td>
-                      <td className="px-4 py-3 text-xs text-gray-500">{d.sub}</td>
+                      <td className="px-4 py-3 text-xs text-gray-600">{d.head || "Assign later"}</td>
+                      <td className="px-4 py-3 text-xs font-semibold text-gray-800">{realtimeCompanyEmps.filter(e => (e.dept || "").toLowerCase() === (d.name || "").toLowerCase()).length}</td>
+                      <td className="px-4 py-3 text-xs text-gray-500">{d.sub || 0}</td>
                       <td className="px-4 py-3"><StatusBadge status={d.active!==false?"Active":"Inactive"}/></td>
                       <td className="px-4 py-3"><div className="flex gap-1"><button className="p-1.5 hover:bg-gray-100 rounded text-gray-400 hover:text-gray-600"><Edit size={12}/></button><button className="p-1.5 hover:bg-gray-100 rounded text-gray-400 hover:text-gray-600"><MoreHorizontal size={12}/></button></div></td>
                     </tr>
@@ -775,12 +837,12 @@ function OrgSetupSection() {
               <table className="w-full text-sm">
                 <TableHead cols={["Designation","Level","Department","Employees","Actions"]}/>
                 <tbody className="divide-y divide-gray-100">
-                  {designations.map(([des,level,dept,count])=>(
-                    <tr key={des} className="hover:bg-gray-50">
-                      <td className="px-4 py-3 text-sm font-medium text-gray-800">{des}</td>
-                      <td className="px-4 py-3"><span className="text-[10px] bg-[#EEF2FF] text-[#5C5CFF] px-2 py-0.5 rounded font-medium">{level}</span></td>
-                      <td className="px-4 py-3 text-xs text-gray-500">{dept}</td>
-                      <td className="px-4 py-3 text-xs font-semibold text-gray-800">{count}</td>
+                  {designations.map((d)=>(
+                    <tr key={d.id || d.name} className="hover:bg-gray-50">
+                      <td className="px-4 py-3 text-sm font-medium text-gray-800">{d.name}</td>
+                      <td className="px-4 py-3"><span className="text-[10px] bg-[#EEF2FF] text-[#5C5CFF] px-2 py-0.5 rounded font-medium">{d.level}</span></td>
+                      <td className="px-4 py-3 text-xs text-gray-500">{d.parentDept}</td>
+                      <td className="px-4 py-3 text-xs font-semibold text-gray-800">{realtimeCompanyEmps.filter(e => { const r = (e.role || e.designation || "").toLowerCase(); const n = (d.name || "").toLowerCase(); return r === n }).length}</td>
                       <td className="px-4 py-3"><div className="flex gap-1"><button className="p-1.5 hover:bg-gray-100 rounded text-gray-400 hover:text-gray-600"><Edit size={12}/></button><button className="p-1.5 hover:bg-red-50 rounded text-gray-400 hover:text-red-500"><Trash2 size={12}/></button></div></td>
                     </tr>
                   ))}
@@ -837,25 +899,25 @@ function OrgSetupSection() {
           <div className="space-y-4">
             {editPolicyType === "Attendance" && (
               <>
-                <InputField label="Grace Period" value={gracePeriod} onChange={e=>setGracePeriod(e.target.value)}/>
-                <InputField label="Work Hours / Day" value={workHoursPerDay} onChange={e=>setWorkHoursPerDay(e.target.value)}/>
-                <InputField label="Late Mark After" value={lateMarkTime} onChange={e=>setLateMarkTime(e.target.value)}/>
-                <SelectField label="Biometric Required" value={biometricRequired} onChange={e=>setBiometricRequired(e.target.value)} options={["Yes","No"]}/>
+                <InputField label="Grace Period" value={gracePeriod} onChange={(v: any) => setGracePeriod(String(v?.target?.value ?? v))}/>
+                <InputField label="Work Hours / Day" value={workHoursPerDay} onChange={(v: any) => setWorkHoursPerDay(String(v?.target?.value ?? v))}/>
+                <InputField label="Late Mark After" value={lateMarkTime} onChange={(v: any) => setLateMarkTime(String(v?.target?.value ?? v))}/>
+                <SelectField label="Biometric Required" value={biometricRequired} onChange={(v: any) => setBiometricRequired(String(v?.target?.value ?? v))} options={["Yes","No"]}/>
               </>
             )}
             {editPolicyType === "Leave" && (
               <>
-                <InputField label="Annual Leave Days" value={annualLeave} onChange={e=>setAnnualLeave(e.target.value)}/>
-                <InputField label="Sick Leave Days" value={sickLeave} onChange={e=>setSickLeave(e.target.value)}/>
-                <InputField label="Casual Leave Days" value={casualLeave} onChange={e=>setCasualLeave(e.target.value)}/>
-                <SelectField label="Carryover Allowed" value={carryoverAllowed} onChange={e=>setCarryoverAllowed(e.target.value)} options={["Yes","No"]}/>
+                <InputField label="Annual Leave Days" value={annualLeave} onChange={(v: any) => setAnnualLeave(String(v?.target?.value ?? v))}/>
+                <InputField label="Sick Leave Days" value={sickLeave} onChange={(v: any) => setSickLeave(String(v?.target?.value ?? v))}/>
+                <InputField label="Casual Leave Days" value={casualLeave} onChange={(v: any) => setCasualLeave(String(v?.target?.value ?? v))}/>
+                <SelectField label="Carryover Allowed" value={carryoverAllowed} onChange={(v: any) => setCarryoverAllowed(String(v?.target?.value ?? v))} options={["Yes","No"]}/>
               </>
             )}
             {editPolicyType === "WFH" && (
               <>
-                <SelectField label="WFH Allowed" value={wfhAllowed} onChange={e=>setWfhAllowed(e.target.value)} options={["Yes, with approval","Yes, automatic","No"]}/>
-                <InputField label="Max WFH Days / Month" value={maxWfhDaysMonth} onChange={e=>setMaxWfhDaysMonth(e.target.value)}/>
-                <SelectField label="Geo-fence Required" value={geofenceRequired} onChange={e=>setGeofenceRequired(e.target.value)} options={["Yes","No"]}/>
+                <SelectField label="WFH Allowed" value={wfhAllowed} onChange={(v: any) => setWfhAllowed(String(v?.target?.value ?? v))} options={["Yes, with approval","Yes, automatic","No"]}/>
+                <InputField label="Max WFH Days / Month" value={maxWfhDaysMonth} onChange={(v: any) => setMaxWfhDaysMonth(String(v?.target?.value ?? v))}/>
+                <SelectField label="Geo-fence Required" value={geofenceRequired} onChange={(v: any) => setGeofenceRequired(String(v?.target?.value ?? v))} options={["Yes","No"]}/>
               </>
             )}
             <div className="flex justify-end gap-3 pt-3 border-t border-gray-200">
@@ -872,9 +934,9 @@ function OrgSetupSection() {
       {showAddDept&&(
         <Modal title="Add Department" onClose={()=>setShowAddDept(false)}>
           <div className="space-y-4">
-            <InputField label="Department Name" value={newDeptName} onChange={e=>setNewDeptName(e.target.value)} placeholder="e.g. Customer Success" required/>
-            <SelectField label="Parent Department" value={newDeptParent} onChange={e=>setNewDeptParent(e.target.value)} options={["None (Top-level)",...DEPT_DIST.map(d=>d.name)]}/>
-            <SelectField label="Department Head" value={newDeptHead} onChange={e=>setNewDeptHead(e.target.value)} options={["Assign later",...EMPLOYEES.map(e=>e.name)]}/>
+            <InputField label="Department Name" value={newDeptName} onChange={(v: any) => setNewDeptName(String(v?.target?.value ?? v))} placeholder="e.g. Customer Success" required/>
+            <SelectField label="Parent Department" value={newDeptParent} onChange={(v: any) => setNewDeptParent(String(v?.target?.value ?? v))} options={["None (Top-level)",...DEPT_DIST.map(d=>d.name)]}/>
+            <SelectField label="Department Head" value={newDeptHead} onChange={(v: any) => setNewDeptHead(String(v?.target?.value ?? v))} options={["Assign later", ...(realtimeCompanyEmps.length > 0 ? realtimeCompanyEmps.map(e=>e.name) : [])]}/>
             <InputField label="Cost Center" placeholder="e.g. ENG-005"/>
             <div className="flex justify-end gap-3 pt-2 border-t border-gray-200">
               <Btn variant="outline" onClick={()=>setShowAddDept(false)}>Cancel</Btn>
@@ -887,12 +949,12 @@ function OrgSetupSection() {
       {showAddLoc&&(
         <Modal title="Add Location" onClose={()=>setShowAddLoc(false)}>
           <div className="space-y-4">
-            <InputField label="Address" value={newLocAddr} onChange={e=>setNewLocAddr(e.target.value)} placeholder="123 Main Street" required/>
+            <InputField label="Address" value={newLocAddr} onChange={(v: any) => setNewLocAddr(String(v?.target?.value ?? v))} placeholder="123 Main Street" required/>
             <div className="grid grid-cols-2 gap-4">
-              <InputField label="City" value={newLocCity} onChange={e=>setNewLocCity(e.target.value)} placeholder="Seattle" required/>
-              <InputField label="State" value={newLocState} onChange={e=>setNewLocState(e.target.value)} placeholder="WA"/>
+              <InputField label="City" value={newLocCity} onChange={(v: any) => setNewLocCity(String(v?.target?.value ?? v))} placeholder="Seattle" required/>
+              <InputField label="State" value={newLocState} onChange={(v: any) => setNewLocState(String(v?.target?.value ?? v))} placeholder="WA"/>
             </div>
-            <InputField label="Timezone" value={newLocTz} onChange={e=>setNewLocTz(e.target.value)} placeholder="(UTC-8) Pacific"/>
+            <InputField label="Timezone" value={newLocTz} onChange={(v: any) => setNewLocTz(String(v?.target?.value ?? v))} placeholder="(UTC-8) Pacific"/>
             <div className="flex justify-end gap-3 pt-2 border-t border-gray-200">
               <Btn variant="outline" onClick={()=>setShowAddLoc(false)}>Cancel</Btn>
               <Btn onClick={handleAddLocationSubmit} disabled={!newLocCity.trim()||!newLocAddr.trim()}>Add Location</Btn>

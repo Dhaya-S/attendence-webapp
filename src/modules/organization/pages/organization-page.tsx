@@ -5,7 +5,7 @@ import {
   MapPin, Bot, TrendingUp, CheckCircle, Edit, Trash2, Eye, Shield, Activity,
   List, ChevronLeft, ChevronRight, ArrowRight, RefreshCw, Send, UserX,
   CalendarDays, FileBarChart, GitBranch, AlertCircle, AlertTriangle, Info,
-  Lock, User, Phone, Copy, XCircle
+  Lock, User, Phone, Copy, XCircle, Briefcase
 } from "lucide-react";
 import {
   AreaChart, Area, BarChart as RBarChart, Bar, LineChart as RLineChart, Line,
@@ -976,25 +976,25 @@ function EmployeeTreeTab({
               label="Department"
               options={allDepts}
               value={treeDept}
-              onChange={setTreeDept}
+              onChange={(v: any) => setTreeDept(typeof v === "string" ? v : v?.target?.value || "All")}
             />
             <SelectField
               label="Location"
               options={allBranches}
               value={treeBranch}
-              onChange={setTreeBranch}
+              onChange={(v: any) => setTreeBranch(typeof v === "string" ? v : v?.target?.value || "All")}
             />
             <SelectField
               label="Designation"
               options={allDesigs}
               value={treeDesig}
-              onChange={setTreeDesig}
+              onChange={(v: any) => setTreeDesig(typeof v === "string" ? v : v?.target?.value || "All")}
             />
             <SelectField
               label="Employment Status"
               options={["All", "Active", "On Leave", "Inactive"]}
               value={treeStatus}
-              onChange={setTreeStatus}
+              onChange={(v: any) => setTreeStatus(typeof v === "string" ? v : v?.target?.value || "All")}
             />
             <div className="flex justify-end gap-2 pt-2 border-t border-gray-150">
               <Btn variant="outline" size="sm" onClick={() => {
@@ -1193,22 +1193,9 @@ export function OrganizationPage({
         try {
           unsub = onSnapshot(collection(db, "organizations", targetCompanyId, "departments"), (snap) => {
             const list = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-            if (list.length > 0) {
-              setRealtimeDepts(list);
-              if (!activeDept) setActiveDept(list[0].name || list[0].id);
-            }
+            setRealtimeDepts(list);
+            if (list.length > 0 && !activeDept) setActiveDept(list[0].name || list[0].id);
           });
-        } catch (_) {}
-
-        try {
-          const orgSnap = await getDoc(doc(db, "organizations", targetCompanyId));
-          if (orgSnap.exists() && orgSnap.data().departments?.length) {
-            const docList = orgSnap.data().departments.map((d: any, i: number) =>
-              typeof d === "string" ? { id: `D_${i}`, name: d, code: d.substring(0, 3).toUpperCase(), color: "#5C5CFF" } : { color: "#5C5CFF", ...d }
-            );
-            setRealtimeDepts(prev => prev.length > 0 ? prev : docList);
-            if (!activeDept && docList.length > 0) setActiveDept(docList[0].name || docList[0].id);
-          }
         } catch (_) {}
       }
     }
@@ -1238,6 +1225,7 @@ export function OrganizationPage({
   const [realtimeAnnouncements, setRealtimeAnnouncements] = useState<any[]>([]);
   const [realtimePolicies, setRealtimePolicies] = useState<any[]>([]);
   const [realtimeDocuments, setRealtimeDocuments] = useState<any[]>([]);
+  const [realtimeDailyAtt, setRealtimeDailyAtt] = useState<any[]>([]);
   const [realtimeOrgProfile, setRealtimeOrgProfile] = useState<any>(null);
 
   // Firestore listeners for operations collections
@@ -1302,10 +1290,29 @@ export function OrganizationPage({
           setRealtimeDocuments(snap.docs.map(d => ({ id: d.id, ...d.data() })));
         }));
       } catch (_) {}
+
+      // Designations
+      try {
+        unsubs.push(onSnapshot(collection(db, "organizations", targetCompanyId, "designations"), (snap) => {
+          setRealtimeDesignations(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+        }));
+      } catch (_) {}
+
+      // Attendance (Daily Check-ins)
+      try {
+        unsubs.push(onSnapshot(collection(db, "organizations", targetCompanyId, "attendance"), (snap) => {
+          setRealtimeDailyAtt(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+        }));
+      } catch (_) {}
     }
     listenOps();
     return () => { unsubs.forEach(u => { if (u) u(); }); };
   }, [companyId]);
+
+  const [realtimeDesignations, setRealtimeDesignations] = useState<any[]>([]);
+  const [showCreateDesig, setShowCreateDesig] = useState(false);
+  const [newDesigTitle, setNewDesigTitle] = useState("");
+  const [newDesigDept, setNewDesigDept] = useState("");
 
   const [opsTab, setOpsTab] = useState("Shifts");
   const [opsView, setOpsView] = useState<"list"|"calendar">("list");
@@ -1330,6 +1337,67 @@ export function OrganizationPage({
   const [annTitle, setAnnTitle] = useState("");
   const [annBody, setAnnBody] = useState("");
   const [annAudience, setAnnAudience] = useState<string[]>(["All Employees"]);
+  const [annAudienceType, setAnnAudienceType] = useState<"all"|"departments"|"particular_employees">("all");
+  const [selectedDepts, setSelectedDepts] = useState<string[]>([]);
+  const [selectedEmpIds, setSelectedEmpIds] = useState<string[]>([]);
+  const [annMemberSearch, setAnnMemberSearch] = useState("");
+
+  // Reset Create Announcement modal state when opened
+  useEffect(() => {
+    if (showCreateAnn) {
+      setAnnStep(1);
+      setAnnTitle("");
+      setAnnBody("");
+      setAnnAudienceType("all");
+      setSelectedDepts([]);
+      setSelectedEmpIds([]);
+      setAnnMemberSearch("");
+    }
+  }, [showCreateAnn]);
+
+  const handlePublishOrgAnn = async (isDraft = false) => {
+    const summary =
+      annAudienceType === "all"
+        ? "All Employees"
+        : annAudienceType === "departments"
+        ? (selectedDepts.length > 0 ? selectedDepts.join(", ") : "All Departments")
+        : `${selectedEmpIds.length} Employee(s)`;
+
+    const newAnn = {
+      id: `ANN_${Date.now()}`,
+      title: annTitle.trim() || (isDraft ? "Draft Announcement" : "Untitled Announcement"),
+      body: annBody.trim(),
+      priority: "Normal",
+      audienceType: annAudienceType,
+      targetDepartments: annAudienceType === "departments" ? selectedDepts : [],
+      targetEmployeeIds: annAudienceType === "particular_employees" ? selectedEmpIds : [],
+      audience: summary,
+      author: auth.currentUser?.displayName || "Alex Admin",
+      authorEmail: auth.currentUser?.email || "",
+      date: new Date().toLocaleDateString("en-US", { month: "short", day: "numeric" }),
+      status: isDraft ? "Draft" : "Published",
+      views: 0,
+      createdAt: Date.now(),
+    };
+
+    // Optimistic UI update
+    setRealtimeAnnouncements((prev) => [newAnn, ...prev]);
+    setShowCreateAnn(false);
+    setAnnTab(isDraft ? "Drafts" : "Published");
+
+    // Firestore persistence
+    try {
+      const targetCompanyId = companyId && companyId !== "default" ? companyId : "default";
+      const colRef = collection(db, "organizations", targetCompanyId, "announcements");
+
+      await addDoc(colRef, {
+        ...newAnn,
+        createdAt: serverTimestamp(),
+      });
+    } catch (e) {
+      console.warn("Firestore save announcement warning (saved locally):", e);
+    }
+  };
 
   // ── Reports state ──
   const [activeReport, setActiveReport] = useState<string|null>(null);
@@ -1414,11 +1482,94 @@ export function OrganizationPage({
     const mb = empBranch==="All"||e.branch===empBranch;
     return ms&&md&&mst&&mb;
   });
-  const deptData = activeDept
-    ? (realtimeDepts.find(d => (typeof d === "string" ? d : d.name || d.id) === activeDept) || { name: activeDept, value: activeEmpList.filter(e=>e.dept?.toLowerCase()===activeDept.toLowerCase()).length, color: "#5C5CFF" })
-    : { name: "Department", value: 0, color: "#5C5CFF" };
-  const deptMembers = activeEmpList.filter(e=>(e.dept||"").toLowerCase()===(activeDept||"").toLowerCase());
-  const deptHead = deptMembers.find(e=>["VP","Director","Manager","Lead","CFO","Counsel"].some(t=>(e.designation||"").includes(t)));
+  const currentDeptName = activeDept || (
+    realtimeDepts.length > 0
+      ? (typeof realtimeDepts[0] === "string" ? realtimeDepts[0] : realtimeDepts[0]?.name || realtimeDepts[0]?.code || realtimeDepts[0]?.id || "")
+      : ""
+  );
+
+  const selectedDeptObj = realtimeDepts.find(d => {
+    const dName = typeof d === "string" ? d : d.name || d.code || d.id || "";
+    return dName.toLowerCase() === currentDeptName.toLowerCase();
+  });
+
+  const selectedDeptColor = (typeof selectedDeptObj === "object" && selectedDeptObj?.color) ? selectedDeptObj.color : "#5C5CFF";
+
+  const deptMembers = activeEmpList.filter(e => {
+    if (!currentDeptName) return false;
+    const empDept = (e.dept || e.department || "").trim().toLowerCase();
+    const targetDept = currentDeptName.trim().toLowerCase();
+    const targetId = (typeof selectedDeptObj === "object" && selectedDeptObj?.id) ? String(selectedDeptObj.id).trim().toLowerCase() : "";
+    return empDept === targetDept || (targetId && empDept === targetId);
+  });
+
+  const deptAvgAttendance = (function() {
+    if (deptMembers.length === 0) return "0.0%";
+
+    const memberEmails = new Set(deptMembers.map(m => String(m.email || m.workEmail || "").toLowerCase()).filter(Boolean));
+    const memberIds = new Set(deptMembers.map(m => String(m.id || m.employeeId || "").toLowerCase()).filter(Boolean));
+
+    const deptAttRecords = realtimeDailyAtt.filter(r => {
+      const rEmail = String(r.employeeEmail || r.email || "").toLowerCase();
+      const rId = String(r.employeeId || r.userId || "").toLowerCase();
+      return (rEmail && memberEmails.has(rEmail)) || (rId && memberIds.has(rId));
+    });
+
+    if (deptAttRecords.length > 0) {
+      let presentCount = 0;
+      deptAttRecords.forEach(r => {
+        const s = String(r.status || r.attendanceStatus || "").toLowerCase();
+        if (["present", "checked in", "working", "wfh", "remote", "late"].includes(s)) {
+          presentCount++;
+        }
+      });
+      return `${((presentCount / deptAttRecords.length) * 100).toFixed(1)}%`;
+    }
+
+    const sum = deptMembers.reduce((acc, emp) => {
+      let att = typeof emp.attendance === "number" ? emp.attendance : (parseFloat(emp.attendance) || 100);
+      const todayStatus = String(emp.attendanceStatus || emp.status || "").toLowerCase();
+      if (todayStatus === "absent") {
+        att = Math.max(0, att - 5);
+      } else if (["present", "checked in", "working", "wfh", "late"].includes(todayStatus)) {
+        att = Math.min(100, Math.max(att, 90));
+      }
+      return acc + att;
+    }, 0);
+
+    return `${(sum / deptMembers.length).toFixed(1)}%`;
+  })();
+
+  const deptData = {
+    name: currentDeptName || "Department",
+    value: deptMembers.length,
+    color: selectedDeptColor
+  };
+
+  const rawHeadName = (typeof selectedDeptObj === "object" && selectedDeptObj?.head) ? selectedDeptObj.head : "";
+  const deptHead = (function() {
+    const foundHeadEmp = deptMembers.find(e => 
+      (rawHeadName && (e.name === rawHeadName || e.email === rawHeadName)) ||
+      ["VP", "Director", "Manager", "Lead", "CFO", "Counsel", "Head"].some(t => (e.designation || "").includes(t))
+    );
+    if (foundHeadEmp) {
+      return {
+        name: foundHeadEmp.name,
+        initials: foundHeadEmp.initials || foundHeadEmp.name.split(" ").map((n: string) => n[0]).join("").toUpperCase().slice(0, 2),
+        color: foundHeadEmp.color || selectedDeptColor,
+        designation: foundHeadEmp.designation || "Department Head"
+      };
+    }
+    if (rawHeadName) {
+      return {
+        name: rawHeadName,
+        initials: rawHeadName.split(" ").map((n: string) => n[0]).join("").toUpperCase().slice(0, 2),
+        color: selectedDeptColor,
+        designation: "Department Head"
+      };
+    }
+    return null;
+  })();
 
   // ── Derived real-time operations data ──
   const SHIFTS_COLORS = ["#5C5CFF","#22C55E","#F59E0B","#EF4444","#8B5CF6","#06B6D4","#EC4899","#14B8A6"];
@@ -1507,7 +1658,14 @@ export function OrganizationPage({
                       <Building2 size={28} className="text-[#5C5CFF]"/>
                     </div>
                     <div className="flex-1 grid grid-cols-3 gap-x-8 gap-y-3">
-                      {([["Company", realtimeOrgProfile?.name || realtimeOrgProfile?.organizationName || "—"],["Industry", realtimeOrgProfile?.industry || "—"],["Founded", realtimeOrgProfile?.founded || "—"],["Employee Count", String(activeEmpList.length)],["Headquarters", realtimeOrgProfile?.headquarters || realtimeOrgProfile?.address || "—"],["Working Days", realtimeOrgProfile?.workingDays || "Mon – Fri"]] as [string,string][]).map(([k,v])=>(
+                      {([
+                        ["Company", realtimeOrgProfile?.name || realtimeOrgProfile?.organizationName || orgData.name || "Acme Corp"],
+                        ["Industry", realtimeOrgProfile?.industry || orgData.industry || "Technology"],
+                        ["Founded", realtimeOrgProfile?.founded || "2020"],
+                        ["Employee Count", String(activeEmpList.length)],
+                        ["Headquarters", realtimeOrgProfile?.headquarters || realtimeOrgProfile?.address || activeBranches[0]?.addr || activeBranches[0]?.name || orgData.address || "123 Main St, New York HQ"],
+                        ["Working Days", realtimeOrgProfile?.workingDays || "Mon – Fri"]
+                      ] as [string,string][]).map(([k,v])=>(
                         <div key={k}><p className="text-[10px] text-gray-400 uppercase tracking-wide mb-0.5">{k}</p><p className="text-sm font-medium text-gray-800">{v}</p></div>
                       ))}
                     </div>
@@ -1791,7 +1949,7 @@ export function OrganizationPage({
                       <div className="flex items-center gap-3">
                         <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-[#EEF2FF]"><GitBranch size={18} className="text-[#5C5CFF]"/></div>
                         <div>
-                          <h3 className="text-sm font-semibold text-gray-900">{activeDept || (realtimeDepts[0]?.name || realtimeDepts[0]?.id || "Department")}</h3>
+                          <h3 className="text-sm font-semibold text-gray-900">{currentDeptName || "Department"}</h3>
                           <p className="text-xs text-gray-500">Active Organization Department</p>
                         </div>
                       </div>
@@ -1810,7 +1968,7 @@ export function OrganizationPage({
                     {deptWsTab==="Overview"&&(
                       <div className="space-y-4">
                         <div className="grid grid-cols-3 gap-3">
-                          {[["Members",deptData.value,"#5C5CFF"],["Avg Attendance","96.2%","#22C55E"],["Open Positions","3","#F59E0B"]].map(([k,v,c])=>(
+                          {[["Members",deptData.value,"#5C5CFF"],["Avg Attendance",deptAvgAttendance,"#22C55E"],["Open Positions","3","#F59E0B"]].map(([k,v,c])=>(
                             <div key={k as string} className="rounded-lg p-3.5" style={{backgroundColor:(c as string)+"10"}}>
                               <p className="text-xl font-bold" style={{color:c as string}}>{v}</p>
                               <p className="text-xs text-gray-500 mt-0.5">{k}</p>
@@ -1840,17 +1998,23 @@ export function OrganizationPage({
                           <p className="text-sm font-medium text-gray-800">{deptMembers.length} members</p>
                           <div className="flex gap-2">
                             <Btn size="sm" variant="outline"><Upload size={12}/>Import</Btn>
-                            <Btn size="sm"><UserPlus size={12}/>Add</Btn>
+                            <Btn size="sm" onClick={()=>setShowAddEmp(true)}><UserPlus size={12}/>Add</Btn>
                           </div>
                         </div>
-                        {deptMembers.map(emp=>(
-                          <div key={emp.id} onClick={()=>{setTab("Employees");setActiveEmp(emp);}} className="flex items-center gap-3 p-3 bg-white rounded-lg border border-gray-100 hover:border-[#5C5CFF]/30 cursor-pointer">
-                            <Avt initials={emp.initials} color={emp.color} size="sm"/>
-                            <div className="flex-1"><p className="text-sm font-medium text-gray-800">{emp.name}</p><p className="text-xs text-gray-400">{emp.designation}</p></div>
-                            <StatusBadge status={emp.status}/>
-                            <button className="p-1.5 hover:bg-gray-100 rounded text-gray-400"><MoreHorizontal size={13}/></button>
+                        {deptMembers.length === 0 ? (
+                          <div className="bg-white rounded-lg border border-gray-100 p-8 text-center text-xs text-gray-400">
+                            No members assigned to {currentDeptName} yet.
                           </div>
-                        ))}
+                        ) : (
+                          deptMembers.map(emp=>(
+                            <div key={emp.id} onClick={()=>{setTab("Employees");setActiveEmp(emp);}} className="flex items-center gap-3 p-3 bg-white rounded-lg border border-gray-100 hover:border-[#5C5CFF]/30 cursor-pointer">
+                              <Avt initials={emp.initials} color={emp.color} size="sm"/>
+                              <div className="flex-1"><p className="text-sm font-medium text-gray-800">{emp.name}</p><p className="text-xs text-gray-400">{emp.designation}</p></div>
+                              <StatusBadge status={emp.status}/>
+                              <button className="p-1.5 hover:bg-gray-100 rounded text-gray-400"><MoreHorizontal size={13}/></button>
+                            </div>
+                          ))
+                        )}
                       </div>
                     )}
                     {deptWsTab==="Statistics"&&(
@@ -2279,17 +2443,21 @@ export function OrganizationPage({
               {polTab==="Documents"&&(
                 <div className="max-w-2xl space-y-3">
                   <div className="flex items-center justify-between mb-2">
-                    <p className="text-sm text-gray-600">{DOCUMENTS_LIST.length} policy documents</p>
+                    <p className="text-sm text-gray-600">{realtimeDocuments.length} policy documents</p>
                     <Btn size="sm"><Upload size={13}/>Upload</Btn>
                   </div>
-                  {DOCUMENTS_LIST.map(d=>(
-                    <div key={d.id} className="bg-white rounded-lg border border-gray-200 p-4 flex items-center gap-3 hover:border-[#5C5CFF]/30 cursor-pointer">
-                      <div className="w-10 h-10 rounded-lg bg-red-50 flex items-center justify-center flex-shrink-0"><FileText size={16} className="text-red-500"/></div>
-                      <div className="flex-1"><p className="text-sm font-medium text-gray-800">{d.name}</p><p className="text-xs text-gray-400">{d.category} · {d.size} · Updated {d.updated} by {d.updatedBy}</p></div>
-                      <StatusBadge status={d.status}/>
-                      <div className="flex gap-1"><button className="p-1.5 hover:bg-gray-100 rounded text-gray-400 hover:text-gray-600"><Eye size={13}/></button><button className="p-1.5 hover:bg-gray-100 rounded text-gray-400 hover:text-gray-600"><Download size={13}/></button><button className="p-1.5 hover:bg-gray-100 rounded text-gray-400 hover:text-gray-600"><MoreHorizontal size={13}/></button></div>
-                    </div>
-                  ))}
+                  {realtimeDocuments.length === 0 ? (
+                    <div className="text-center py-8 text-[#6B7280] text-xs font-medium">No documents uploaded yet.</div>
+                  ) : (
+                    realtimeDocuments.map(d=>(
+                      <div key={d.id} className="bg-white rounded-lg border border-gray-200 p-4 flex items-center gap-3 hover:border-[#5C5CFF]/30 cursor-pointer">
+                        <div className="w-10 h-10 rounded-lg bg-red-50 flex items-center justify-center flex-shrink-0"><FileText size={16} className="text-red-500"/></div>
+                        <div className="flex-1"><p className="text-sm font-medium text-gray-800">{d.name}</p><p className="text-xs text-gray-400">{d.category} · {d.size} · Updated {d.updated} by {d.updatedBy}</p></div>
+                        <StatusBadge status={d.status}/>
+                        <div className="flex gap-1"><button className="p-1.5 hover:bg-gray-100 rounded text-gray-400 hover:text-gray-600"><Eye size={13}/></button><button className="p-1.5 hover:bg-gray-100 rounded text-gray-400 hover:text-gray-600"><Download size={13}/></button><button className="p-1.5 hover:bg-gray-100 rounded text-gray-400 hover:text-gray-600"><MoreHorizontal size={13}/></button></div>
+                      </div>
+                    ))
+                  )}
                 </div>
               )}
 
@@ -2805,8 +2973,8 @@ export function OrganizationPage({
             <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 flex-shrink-0">
               <div><h2 className="text-base font-semibold text-gray-900">Create Announcement</h2><p className="text-xs text-gray-500">Step {annStep} of 3</p></div>
               <div className="flex gap-2">
-                <button className="text-xs px-3 py-1.5 border border-gray-200 rounded-lg text-gray-500 hover:bg-gray-50">Save Draft</button>
-                <button onClick={()=>setShowCreateAnn(false)} className="p-1 text-gray-400 hover:text-gray-600 rounded hover:bg-gray-100"><X size={18}/></button>
+                <button type="button" onClick={() => handlePublishOrgAnn(true)} className="text-xs px-3 py-1.5 border border-gray-200 rounded-lg text-gray-500 hover:bg-gray-50">Save Draft</button>
+                <button type="button" onClick={()=>setShowCreateAnn(false)} className="p-1 text-gray-400 hover:text-gray-600 rounded hover:bg-gray-100"><X size={18}/></button>
               </div>
             </div>
             <div className="px-6 py-3 border-b border-gray-100 bg-gray-50 flex-shrink-0">
@@ -2824,7 +2992,7 @@ export function OrganizationPage({
             <div className="flex-1 overflow-auto p-6">
               {annStep===1&&(
                 <div className="space-y-4">
-                  <InputField label="Announcement Title" placeholder="e.g. Q3 All-Hands Meeting" value={annTitle} onChange={setAnnTitle} required/>
+                  <InputField label="Announcement Title" placeholder="e.g. Q3 All-Hands Meeting" value={annTitle} onChange={(v: any) => setAnnTitle(typeof v === "string" ? v : v?.target?.value || "")} required/>
                   <div>
                     <label className="text-sm font-medium text-gray-700 block mb-1.5">Message <span className="text-red-500">*</span></label>
                     <textarea value={annBody} onChange={e=>setAnnBody(e.target.value)} rows={5} placeholder="Write your announcement message…" className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md bg-white text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#5C5CFF] focus:border-transparent resize-none"/>
@@ -2838,16 +3006,252 @@ export function OrganizationPage({
               )}
               {annStep===2&&(
                 <div className="space-y-4">
-                  <p className="text-sm font-medium text-gray-700">Select Audience</p>
-                  <div className="space-y-2">
-                    {["All Employees","Full-Time Employees","Contract Employees","Engineering","Product","Design","Marketing","Sales","HR","Finance","New York HQ","San Francisco","Chicago","Austin"].map(a=>(
-                      <label key={a} className="flex items-center gap-3 p-3 rounded-lg border border-gray-100 hover:bg-gray-50 cursor-pointer">
-                        <input type="checkbox" checked={annAudience.includes(a)} onChange={e=>setAnnAudience(prev=>e.target.checked?[...prev,a]:prev.filter(x=>x!==a))} className="rounded accent-[#5C5CFF]"/>
-                        <span className="text-sm text-gray-700">{a}</span>
-                        <span className="ml-auto text-xs text-gray-400">{a==="All Employees"?String(activeEmpList.length):a.includes("Full")?String(activeEmpList.filter(e=>e.empType==="Full-Time").length):a.includes("Contract")?String(activeEmpList.filter(e=>e.empType!=="Full-Time").length):String(activeEmpList.filter(e=>e.dept===a||(e.branch||"").includes(a)).length)||"–"} people</span>
-                      </label>
-                    ))}
+                  <h4 className="text-xs font-bold text-gray-700 uppercase tracking-wider mb-2">
+                    Select Audience
+                  </h4>
+
+                  {/* Option 1: Send to All Employees */}
+                  <div
+                    onClick={() => setAnnAudienceType("all")}
+                    className={cn(
+                      "border rounded-xl p-3.5 flex items-center justify-between cursor-pointer transition-all",
+                      annAudienceType === "all"
+                        ? "border-[#5C5CFF] bg-[#F5F5FF] shadow-sm"
+                        : "border-gray-200 bg-white hover:border-gray-300"
+                    )}
+                  >
+                    <div className="flex items-center gap-3">
+                      <div
+                        className={cn(
+                          "w-5 h-5 rounded-full border flex items-center justify-center transition-colors",
+                          annAudienceType === "all"
+                            ? "border-[#5C5CFF] bg-[#5C5CFF] text-white"
+                            : "border-gray-300 bg-white"
+                        )}
+                      >
+                        {annAudienceType === "all" && <Check size={12} strokeWidth={3} />}
+                      </div>
+                      <div>
+                        <p className="text-sm font-semibold text-gray-900">
+                          Send to All Employees
+                        </p>
+                        <p className="text-xs text-gray-500">
+                          Broadcast announcement to all employees across the organization
+                        </p>
+                      </div>
+                    </div>
+                    <span className="text-xs font-semibold text-gray-500 bg-white px-2.5 py-1 rounded-lg border border-gray-150">
+                      {activeEmpList.length} employees
+                    </span>
                   </div>
+
+                  {/* Option 2: Particular Departments */}
+                  <div
+                    onClick={() => setAnnAudienceType("departments")}
+                    className={cn(
+                      "border rounded-xl p-3.5 flex items-center justify-between cursor-pointer transition-all",
+                      annAudienceType === "departments"
+                        ? "border-[#5C5CFF] bg-[#F5F5FF] shadow-sm"
+                        : "border-gray-200 bg-white hover:border-gray-300"
+                    )}
+                  >
+                    <div className="flex items-center gap-3">
+                      <div
+                        className={cn(
+                          "w-5 h-5 rounded-full border flex items-center justify-center transition-colors",
+                          annAudienceType === "departments"
+                            ? "border-[#5C5CFF] bg-[#5C5CFF] text-white"
+                            : "border-gray-300 bg-white"
+                        )}
+                      >
+                        {annAudienceType === "departments" && <Check size={12} strokeWidth={3} />}
+                      </div>
+                      <div>
+                        <p className="text-sm font-semibold text-gray-900">
+                          Particular Departments
+                        </p>
+                        <p className="text-xs text-gray-500">
+                          Select specific departments to receive this announcement
+                        </p>
+                      </div>
+                    </div>
+                    <span className="text-xs font-semibold text-gray-500 bg-white px-2.5 py-1 rounded-lg border border-gray-150">
+                      {selectedDepts.length} selected
+                    </span>
+                  </div>
+
+                  {/* Expandable Department Selector */}
+                  {annAudienceType === "departments" && (
+                    <div className="border border-gray-200 rounded-xl p-3 bg-gray-50/50 space-y-2.5 animate-in fade-in duration-150">
+                      <div className="flex items-center justify-between pb-1 border-b border-gray-200">
+                        <span className="text-xs font-semibold text-gray-700">
+                          Select Departments ({selectedDepts.length} of {realtimeDepts.length || 1})
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const allDeptNames = realtimeDepts.map(d => typeof d === "string" ? d : d.name || d.code || d.id);
+                            if (selectedDepts.length === allDeptNames.length) {
+                              setSelectedDepts([]);
+                            } else {
+                              setSelectedDepts(allDeptNames);
+                            }
+                          }}
+                          className="text-xs text-[#5C5CFF] font-semibold hover:underline"
+                        >
+                          {selectedDepts.length === (realtimeDepts.length || 1) ? "Deselect All" : "Select All"}
+                        </button>
+                      </div>
+
+                      <div className="max-h-48 overflow-y-auto space-y-1 pr-1">
+                        {realtimeDepts.map((d) => {
+                          const dName = typeof d === "string" ? d : d.name || d.code || d.id;
+                          const isSelected = selectedDepts.includes(dName);
+                          const deptCount = activeEmpList.filter(e => (e.dept || "").toLowerCase() === dName.toLowerCase()).length;
+                          return (
+                            <div
+                              key={dName}
+                              onClick={() => {
+                                setSelectedDepts(prev =>
+                                  prev.includes(dName) ? prev.filter(x => x !== dName) : [...prev, dName]
+                                );
+                              }}
+                              className={cn(
+                                "flex items-center justify-between p-2.5 rounded-lg cursor-pointer transition-colors border bg-white",
+                                isSelected ? "border-[#5C5CFF]/30 bg-[#F5F5FF]" : "border-gray-150 hover:bg-gray-100/60"
+                              )}
+                            >
+                              <div className="flex items-center gap-2.5">
+                                <GitBranch size={14} className="text-[#5C5CFF]" />
+                                <span className="text-xs font-semibold text-gray-800">{dName}</span>
+                              </div>
+                              <div className="flex items-center gap-3">
+                                <span className="text-[11px] text-gray-400 font-medium">{deptCount} employees</span>
+                                <input
+                                  type="checkbox"
+                                  checked={isSelected}
+                                  onChange={() => {}}
+                                  className="w-4 h-4 rounded text-[#5C5CFF] focus:ring-[#5C5CFF] accent-[#5C5CFF]"
+                                />
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Option 3: Particular Employee */}
+                  <div
+                    onClick={() => setAnnAudienceType("particular_employees")}
+                    className={cn(
+                      "border rounded-xl p-3.5 flex items-center justify-between cursor-pointer transition-all",
+                      annAudienceType === "particular_employees"
+                        ? "border-[#5C5CFF] bg-[#F5F5FF] shadow-sm"
+                        : "border-gray-200 bg-white hover:border-gray-300"
+                    )}
+                  >
+                    <div className="flex items-center gap-3">
+                      <div
+                        className={cn(
+                          "w-5 h-5 rounded-full border flex items-center justify-center transition-colors",
+                          annAudienceType === "particular_employees"
+                            ? "border-[#5C5CFF] bg-[#5C5CFF] text-white"
+                            : "border-gray-300 bg-white"
+                        )}
+                      >
+                        {annAudienceType === "particular_employees" && <Check size={12} strokeWidth={3} />}
+                      </div>
+                      <div>
+                        <p className="text-sm font-semibold text-gray-900">
+                          Particular Employee
+                        </p>
+                        <p className="text-xs text-gray-500">
+                          Select individual employees from the directory
+                        </p>
+                      </div>
+                    </div>
+                    <span className="text-xs font-semibold text-gray-500 bg-white px-2.5 py-1 rounded-lg border border-gray-150">
+                      {selectedEmpIds.length} selected
+                    </span>
+                  </div>
+
+                  {/* Expandable Employee Selector */}
+                  {annAudienceType === "particular_employees" && (
+                    <div className="border border-gray-200 rounded-xl p-3 bg-gray-50/50 space-y-3 animate-in fade-in duration-150">
+                      <div className="flex items-center gap-2">
+                        <div className="relative flex-1">
+                          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                          <input
+                            type="text"
+                            placeholder="Search employee by name, email, or role..."
+                            value={annMemberSearch}
+                            onChange={(e) => setAnnMemberSearch(e.target.value)}
+                            className="w-full pl-8 pr-3 py-1.5 bg-white border border-gray-200 rounded-lg text-xs text-gray-900 outline-none focus:border-[#5C5CFF]"
+                          />
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (selectedEmpIds.length === activeEmpList.length) {
+                              setSelectedEmpIds([]);
+                            } else {
+                              setSelectedEmpIds(activeEmpList.map(e => e.id || e.email));
+                            }
+                          }}
+                          className="text-xs text-[#5C5CFF] font-semibold px-2 py-1 hover:underline"
+                        >
+                          {selectedEmpIds.length === activeEmpList.length ? "Deselect All" : "Select All"}
+                        </button>
+                      </div>
+
+                      <div className="max-h-48 overflow-y-auto space-y-1 pr-1">
+                        {activeEmpList
+                          .filter(e => {
+                            if (!annMemberSearch.trim()) return true;
+                            const low = annMemberSearch.toLowerCase();
+                            return (
+                              (e.name || "").toLowerCase().includes(low) ||
+                              (e.email || "").toLowerCase().includes(low) ||
+                              (e.dept || "").toLowerCase().includes(low) ||
+                              (e.designation || "").toLowerCase().includes(low)
+                            );
+                          })
+                          .map((e) => {
+                            const idVal = e.id || e.email;
+                            const isSelected = selectedEmpIds.includes(idVal);
+                            return (
+                              <div
+                                key={idVal}
+                                onClick={() => {
+                                  setSelectedEmpIds(prev =>
+                                    prev.includes(idVal) ? prev.filter(x => x !== idVal) : [...prev, idVal]
+                                  );
+                                }}
+                                className={cn(
+                                  "flex items-center justify-between p-2 rounded-lg cursor-pointer transition-colors border bg-white",
+                                  isSelected ? "border-[#5C5CFF]/30 bg-[#F5F5FF]" : "border-transparent hover:bg-gray-100/60"
+                                )}
+                              >
+                                <div className="flex items-center gap-2.5 min-w-0">
+                                  <Avt initials={e.initials || (e.name || "EM").slice(0, 2).toUpperCase()} color={e.color || "#5C5CFF"} size="xs" />
+                                  <div className="min-w-0">
+                                    <p className="text-xs font-semibold text-gray-900 truncate">{e.name || e.email}</p>
+                                    <p className="text-[10px] text-gray-400 truncate">{e.designation} · {e.dept}</p>
+                                  </div>
+                                </div>
+                                <input
+                                  type="checkbox"
+                                  checked={isSelected}
+                                  onChange={() => {}}
+                                  className="w-4 h-4 rounded text-[#5C5CFF] focus:ring-[#5C5CFF] accent-[#5C5CFF]"
+                                />
+                              </div>
+                            );
+                          })}
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
               {annStep===3&&(
@@ -2855,20 +3259,44 @@ export function OrganizationPage({
                   <div className="bg-gray-50 rounded-xl p-5">
                     <div className="flex items-center gap-3 mb-3">
                       <div className="w-10 h-10 rounded-xl bg-[#EEF2FF] flex items-center justify-center"><Megaphone size={18} className="text-[#5C5CFF]"/></div>
-                      <div><p className="text-sm font-semibold text-gray-800">{annTitle||"Untitled Announcement"}</p><p className="text-xs text-gray-400">{annAudience.join(", ")||"No audience"} · by Alex Admin</p></div>
+                      <div>
+                        <p className="text-sm font-semibold text-gray-800">{annTitle||"Untitled Announcement"}</p>
+                        <p className="text-xs text-gray-400">
+                          {annAudienceType === "all" ? "All Employees" : annAudienceType === "departments" ? (selectedDepts.length > 0 ? selectedDepts.join(", ") : "Selected Departments") : `${selectedEmpIds.length} Employee(s)`} · by Alex Admin
+                        </p>
+                      </div>
                     </div>
-                    <p className="text-sm text-gray-700 leading-relaxed">{annBody||"No message yet"}</p>
+                    <p className="text-sm text-gray-700 leading-relaxed whitespace-pre-line">{annBody||"No message yet"}</p>
                   </div>
                   <div className="bg-green-50 border border-green-100 rounded-lg p-3 flex items-center gap-2">
                     <CheckCircle size={14} className="text-green-500"/>
-                    <p className="text-xs text-green-700">Ready to publish to <strong>{annAudience.length}</strong> audience group(s)</p>
+                    <p className="text-xs text-green-700">
+                      Ready to publish to <strong>
+                        {annAudienceType === "all" ? "All Employees" : annAudienceType === "departments" ? `${selectedDepts.length} department(s)` : `${selectedEmpIds.length} employee(s)`}
+                      </strong>
+                    </p>
                   </div>
                 </div>
               )}
             </div>
             <div className="flex items-center justify-between px-6 py-4 border-t border-gray-200 flex-shrink-0">
               <Btn variant="outline" size="sm" onClick={annStep===1?()=>setShowCreateAnn(false):()=>setAnnStep(s=>s-1)}>{annStep===1?"Cancel":"Back"}</Btn>
-              {annStep<3?<Btn size="sm" onClick={()=>setAnnStep(s=>s+1)}>Next <ArrowRight size={13}/></Btn>:<Btn size="sm" onClick={()=>{setShowCreateAnn(false);setAnnTab("Published");}}><Send size={13}/>Publish</Btn>}
+              {annStep<3?(
+                <Btn
+                  size="sm"
+                  disabled={annStep === 2 && annAudienceType === "departments" && selectedDepts.length === 0}
+                  onClick={()=>setAnnStep(s=>s+1)}
+                >
+                  Next <ArrowRight size={13}/>
+                </Btn>
+              ):(
+                <Btn
+                  size="sm"
+                  onClick={() => handlePublishOrgAnn(false)}
+                >
+                  <Send size={13}/>Publish
+                </Btn>
+              )}
             </div>
           </div>
         </div>
@@ -2889,20 +3317,34 @@ export function OrganizationPage({
       {/* ── Create Department Modal ── */}
       {showCreateDept && (
         <Modal title="Create New Department" onClose={() => setShowCreateDept(false)} width="max-w-lg">
-          <div className="space-y-4">
+          <div className="space-y-4 text-left">
             <div className="grid grid-cols-2 gap-3">
               <InputField 
                 label="Department Name" 
                 placeholder="e.g. Engineering" 
                 value={newDeptName} 
-                onChange={setNewDeptName} 
+                onChange={(v: any) => setNewDeptName(typeof v === "string" ? v : v?.target?.value || "")} 
                 required
               />
               <InputField 
                 label="Department Code" 
                 placeholder="e.g. ENG" 
                 value={newDeptCode} 
-                onChange={setNewDeptCode}
+                onChange={(v: any) => setNewDeptCode(typeof v === "string" ? v : v?.target?.value || "")}
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <SelectField
+                label="Parent Department"
+                value={newDeptParent}
+                onChange={(v: any) => setNewDeptParent(typeof v === "string" ? v : v?.target?.value || "")}
+                options={["None (Top-level)", ...realtimeDepts.map((d) => (typeof d === "string" ? d : d.name || d.id))]}
+              />
+              <SelectField
+                label="Department Head"
+                value={newDeptHead}
+                onChange={(v: any) => setNewDeptHead(typeof v === "string" ? v : v?.target?.value || "")}
+                options={["Assign later", ...activeEmpList.map((e) => e.name)]}
               />
             </div>
             <div className="flex flex-col gap-1">
@@ -2915,12 +3357,6 @@ export function OrganizationPage({
                 placeholder="Brief description of department responsibility…"
               />
             </div>
-            <InputField 
-              label="Department Head (optional)" 
-              placeholder="Head name or email" 
-              value={newDeptHead} 
-              onChange={setNewDeptHead}
-            />
             <div className="flex justify-end gap-2 pt-2 border-t border-gray-200">
               <Btn variant="outline" onClick={() => setShowCreateDept(false)}>Cancel</Btn>
               <Btn onClick={async () => {
@@ -2956,11 +3392,6 @@ export function OrganizationPage({
                 try {
                   await setDoc(doc(db, "organizations", targetCompanyId, "departments", dId), newDeptObj, { merge: true });
 
-                  const orgRef = doc(db, "organizations", targetCompanyId);
-                  const orgSnap = await getDoc(orgRef);
-                  const currentDepts = orgSnap.exists() ? orgSnap.data().departments || [] : [];
-                  await setDoc(orgRef, { departments: [...currentDepts, newDeptObj] }, { merge: true });
-
                   setShowCreateDept(false);
                   setNewDeptName("");
                   setNewDeptCode("");
@@ -2974,6 +3405,79 @@ export function OrganizationPage({
                   alert("Failed to save department to Firestore.");
                 }
               }}>Create Department</Btn>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {showCreateDesig && (
+        <Modal title="Create Designation" onClose={() => setShowCreateDesig(false)} width="max-w-md">
+          <div className="space-y-4 text-left">
+            <InputField
+              label="Designation / Job Title"
+              placeholder="e.g. Senior Software Engineer"
+              value={newDesigTitle}
+              onChange={(v: any) => setNewDesigTitle(typeof v === "string" ? v : v?.target?.value || "")}
+              required
+            />
+            <SelectField
+              label="Department"
+              value={newDesigDept}
+              onChange={(v: any) => setNewDesigDept(typeof v === "string" ? v : v?.target?.value || "")}
+              options={["General", ...realtimeDepts.map((d) => d.name || d.id)]}
+            />
+            <div className="flex justify-end gap-2 pt-4 border-t border-gray-200">
+              <Btn variant="outline" onClick={() => setShowCreateDesig(false)}>
+                Cancel
+              </Btn>
+              <Btn
+                onClick={async () => {
+                  if (!newDesigTitle.trim()) {
+                    alert("Please enter designation title.");
+                    return;
+                  }
+                  const userEmail = (auth.currentUser?.email || "").toLowerCase();
+                  let targetCompanyId = companyId && companyId !== "default" ? companyId : "";
+
+                  if (!targetCompanyId && userEmail) {
+                    try {
+                      const appSnap = await getDoc(doc(db, "approved_users", userEmail));
+                      if (appSnap.exists()) {
+                        targetCompanyId = appSnap.data().companyId || appSnap.data().orgId || "";
+                      }
+                    } catch (_) {}
+                  }
+                  if (!targetCompanyId) targetCompanyId = "default";
+
+                  const desigId = `DESIG_${Date.now()}`;
+                  const desigObj = {
+                    id: desigId,
+                    name: newDesigTitle.trim(),
+                    title: newDesigTitle.trim(),
+                    department: newDesigDept || "General",
+                    createdAt: new Date().toISOString(),
+                  };
+
+                  try {
+                    await setDoc(doc(db, "organizations", targetCompanyId, "designations", desigId), desigObj, { merge: true });
+
+                    const orgRef = doc(db, "organizations", targetCompanyId);
+                    const orgSnap = await getDoc(orgRef);
+                    const currentDesigs = orgSnap.exists() ? orgSnap.data().designations || [] : [];
+                    await setDoc(orgRef, { designations: [...currentDesigs, desigObj] }, { merge: true });
+
+                    setShowCreateDesig(false);
+                    setNewDesigTitle("");
+                    setNewDesigDept("");
+                    opsToast(`Designation "${newDesigTitle.trim()}" created successfully.`);
+                  } catch (err) {
+                    console.error("Error creating designation:", err);
+                    alert("Failed to save designation to Firestore.");
+                  }
+                }}
+              >
+                Create Designation
+              </Btn>
             </div>
           </div>
         </Modal>

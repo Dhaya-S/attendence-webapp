@@ -19,7 +19,7 @@ import {
   SelectField,
 } from "@/shared/components";
 import { db, auth } from "@/shared/utils/firebase";
-import { doc, setDoc, getDoc, collection, getDocs, collectionGroup } from "firebase/firestore";
+import { doc, setDoc, getDoc, collection, getDocs, collectionGroup, onSnapshot } from "firebase/firestore";
 import { useAuth } from "@/shared/context/AuthContext";
 import { EMPLOYEES } from "@/modules/organization/data/employees";
 
@@ -132,6 +132,21 @@ export function AddEmployeePage({ navigate }: { navigate: (p: AppPage) => void }
               if (data.designations) rawDesigs.push(...data.designations);
               if (data.shifts) rawShifts.push(...data.shifts);
             }
+          } catch (_) {}
+
+          try {
+            const unsubDepts = onSnapshot(collection(db, colName, targetCompanyId, "departments"), (snap) => {
+              if (!snap.empty) {
+                const list = snap.docs.map(d => getName(d.data())).filter(Boolean);
+                setDeptOptions(prev => Array.from(new Set([...prev, ...list])));
+              }
+            });
+            const unsubDesigs = onSnapshot(collection(db, colName, targetCompanyId, "designations"), (snap) => {
+              if (!snap.empty) {
+                const list = snap.docs.map(d => getName(d.data())).filter(Boolean);
+                setDesigOptions(prev => Array.from(new Set([...prev, ...list])));
+              }
+            });
           } catch (_) {}
 
           try {
@@ -835,7 +850,10 @@ export function AddEmployeePage({ navigate }: { navigate: (p: AppPage) => void }
         </Btn>
         {step < STEPS.length - 1 ? (
           <Btn onClick={() => {
-            if (step === 0 && (!firstName.trim() || !lastName.trim() || !workEmail.trim())) {
+            const fName = typeof firstName === "string" ? firstName : (firstName as any)?.target?.value || "";
+            const lName = typeof lastName === "string" ? lastName : (lastName as any)?.target?.value || "";
+            const wEmail = typeof workEmail === "string" ? workEmail : (workEmail as any)?.target?.value || "";
+            if (step === 0 && (!fName.trim() || !lName.trim() || !wEmail.trim())) {
               alert("Please fill in First Name, Last Name, and Work Email before continuing.");
               return;
             }

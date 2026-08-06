@@ -481,6 +481,8 @@ export function TeamPage({
             showCreateAnnouncement={showCreateAnnouncement}
             setShowCreateAnnouncement={setShowCreateAnnouncement}
             teamMembers={myTeamMembers}
+            companyId={companyId}
+            currentUser={currentUserInfo}
           />
         )}
 

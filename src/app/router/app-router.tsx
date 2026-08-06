@@ -44,6 +44,11 @@ interface AppRouterProps {
   setLeaveSection: (sec: "My Space" | "My Team") => void;
   leaveTab: string;
   tasksTab: string;
+  tasksSearch?: string;
+  showTasksFilter?: boolean;
+  setShowTasksFilter?: (b: boolean) => void;
+  boardInsightsOpen?: boolean;
+  setBoardInsightsOpen?: (b: boolean) => void;
   selectedEmployee: Employee | null;
   profileOrigin: string | null;
   documentsTab: string;
@@ -81,6 +86,11 @@ export function AppRouter({
   setLeaveSection,
   leaveTab,
   tasksTab,
+  tasksSearch,
+  showTasksFilter,
+  setShowTasksFilter,
+  boardInsightsOpen,
+  setBoardInsightsOpen,
   selectedEmployee,
   profileOrigin,
   documentsTab,
@@ -177,7 +187,19 @@ export function AppRouter({
         />
       );
     case "tasks":
-      return <TasksPage navigate={navigate} activeTab={tasksTab} />;
+      return (
+        <TasksPage
+          navigate={navigate}
+          activeTab={tasksTab}
+          search={tasksSearch}
+          showTasksFilter={showTasksFilter}
+          setShowTasksFilter={setShowTasksFilter}
+          boardInsightsOpen={boardInsightsOpen}
+          setBoardInsightsOpen={setBoardInsightsOpen}
+          showCreateTask={showCreateTask}
+          setShowCreateTask={setShowCreateTask}
+        />
+      );
     case "employee-profile":
       return (
         <EmployeeProfilePage

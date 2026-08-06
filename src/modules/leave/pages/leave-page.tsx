@@ -62,58 +62,58 @@ export function LeavePage({
 
   const normalizedEmail = String(email || user?.email || "").toLowerCase();
 
+  const targetCompId = companyId && companyId !== "default" ? companyId : "default";
+
   // Load org users (for team overview)
   useEffect(() => {
-    if (!companyId || companyId === "default") return;
-    const ref = collection(db, "organizations", companyId, "users");
+    const ref = collection(db, "organizations", targetCompId, "users");
     return onSnapshot(ref, (snap) => {
       setDbUsers(snap.docs.map(d => ({ id: d.id, ...d.data() })));
     }, (err) => console.warn("LeavePage: users error:", err));
-  }, [companyId]);
+  }, [targetCompId]);
 
   // Load leave requests realtime
   useEffect(() => {
-    if (!companyId || companyId === "default") return;
-    const ref = collection(db, "organizations", companyId, "leave_requests");
+    const ref = collection(db, "organizations", targetCompId, "leave_requests");
     const q = query(ref, orderBy("createdAt", "desc"));
     return onSnapshot(q, (snap) => {
       setReqs(snap.docs.map(d => ({ id: d.id, ...d.data() })));
     }, (err) => {
       console.warn("LeavePage: leave_requests error:", err);
     });
-  }, [companyId]);
+  }, [targetCompId]);
 
   const approve = async (id: string) => {
-    if (!companyId) return;
+    setReqs((prev) => prev.map(r => r.id === id ? { ...r, status: "Approved" } : r));
     try {
-      await updateDoc(doc(db, "organizations", companyId, "leave_requests", id), { status: "Approved", approvedAt: new Date().toISOString(), approvedBy: normalizedEmail });
+      await updateDoc(doc(db, "organizations", targetCompId, "leave_requests", id), { status: "Approved", approvedAt: new Date().toISOString(), approvedBy: normalizedEmail });
     } catch (err) { console.warn("approve error:", err); }
   };
 
   const reject = async (id: string) => {
-    if (!companyId) return;
+    setReqs((prev) => prev.map(r => r.id === id ? { ...r, status: "Rejected" } : r));
     try {
-      await updateDoc(doc(db, "organizations", companyId, "leave_requests", id), { status: "Rejected", rejectedAt: new Date().toISOString(), rejectedBy: normalizedEmail });
+      await updateDoc(doc(db, "organizations", targetCompId, "leave_requests", id), { status: "Rejected", rejectedAt: new Date().toISOString(), rejectedBy: normalizedEmail });
     } catch (err) { console.warn("reject error:", err); }
   };
 
   const submitLeave = async () => {
-    if (!applyFrom || !applyTo || !applyReason.trim()) {
-      attMsg("Please fill all required fields.");
+    if (!applyFrom || !applyTo) {
+      attMsg("Please select both From Date and To Date.");
       return;
     }
-    if (!companyId) { attMsg("Company not configured."); return; }
+    const appEmail = String(normalizedEmail || user?.email || "employee@company.com").toLowerCase();
+    const currentUserProfile = dbUsers.find(e => String(e.email || e.workEmail || "").toLowerCase() === appEmail);
+    const empName = currentUserProfile?.name || displayName || user?.displayName || appEmail.split("@")[0];
+    const normalizedRole = String(role || currentUserProfile?.role || "employee").toLowerCase();
+
     setApplySubmitting(true);
     try {
       const from = new Date(applyFrom);
       const to = new Date(applyTo);
       const days = Math.max(1, Math.ceil((to.getTime() - from.getTime()) / 86400000) + 1);
-      const id = `lr_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
-      const currentUserProfile = dbUsers.find(e => String(e.email || e.workEmail || "").toLowerCase() === normalizedEmail);
-      const empName = currentUserProfile?.name || displayName || normalizedEmail;
-      const empRole = String(role || currentUserProfile?.role || "employee").toLowerCase();
+      const id = `lr_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
 
-      // Determine approver: manager > hr_admin > super_admin
       let approverId = "";
       if (currentUserProfile?.managerEmail) {
         approverId = String(currentUserProfile.managerEmail).toLowerCase();
@@ -130,25 +130,41 @@ export function LeavePage({
         approverId = String(superAdmin?.email || superAdmin?.workEmail || "").toLowerCase();
       }
 
-      await setDoc(doc(db, "organizations", companyId, "leave_requests", id), {
+      const newLeaveDoc = {
         id,
         employee: empName,
-        employeeEmail: normalizedEmail,
-        type: applyType,
+        employeeEmail: appEmail,
+        applicantName: empName,
+        applicantEmail: appEmail,
+        applicantRole: normalizedRole,
+        targetRoles: ["manager", "hr_admin", "super_admin"],
+        approver: normalizedRole === "super_admin" ? "Super Admin" : "Reporting Manager",
+        approverId,
+        type: applyType || "Annual Leave",
         from: applyFrom,
         to: applyTo,
         days,
-        reason: applyReason.trim(),
+        reason: applyReason.trim() || "Leave request",
         status: "Pending",
-        approverId,
+        applied: new Date().toLocaleDateString("en-US", { month: "short", day: "numeric" }),
         createdAt: new Date().toISOString(),
         dept: currentUserProfile?.dept || currentUserProfile?.department || "",
-      });
-      attMsg("Leave request submitted successfully!");
+      };
+
+      setReqs((prev) => [newLeaveDoc, ...prev]);
       setShowApply(false);
       setApplyReason("");
       setApplyFrom("");
       setApplyTo("");
+      attMsg("Leave request submitted successfully!");
+
+      const compId = targetCompId && targetCompId !== "default" ? targetCompId : "default";
+      await setDoc(doc(db, "organizations", compId, "leave_requests", id), newLeaveDoc);
+      if (compId !== "default") {
+        try {
+          await setDoc(doc(db, "organizations", "default", "leave_requests", id), newLeaveDoc);
+        } catch (_) {}
+      }
     } catch (err) {
       console.error("submitLeave error:", err);
       attMsg("Failed to submit leave request.");
@@ -204,69 +220,84 @@ export function LeavePage({
         ) : (
           <div className="flex-1 flex flex-col overflow-hidden h-full">
             <div className="flex-1 overflow-auto">
-              {tab === "Overview" && (
-                <div className="p-6 space-y-5">
-                  <div className="grid grid-cols-4 gap-4">
-                    {[
-                      ["Pending Approval", "3", "text-amber-600", "bg-amber-50"],
-                      ["Approved Today", "2", "text-green-600", "bg-green-50"],
-                      ["On Leave Now", "43", "text-blue-600", "bg-blue-50"],
-                      ["Upcoming (7 days)", "18", "text-purple-600", "bg-purple-50"],
-                    ].map(([l, v, tc, bc]) => (
-                      <div
-                        key={l as string}
-                        className={cn(
-                          "flex items-center justify-between px-5 py-3.5 rounded-lg",
-                          bc
-                        )}
-                      >
-                        <span className="text-sm text-gray-700">{l}</span>
-                        <span className={cn("text-xl font-semibold", tc)}>{v}</span>
-                      </div>
-                    ))}
-                  </div>
-                  {dbUsers.length === 0 ? (
-                    <div className="text-center py-8 text-xs text-gray-400">Loading team data...</div>
-                  ) : (
-                    <div className="grid grid-cols-3 gap-4">
-                      {dbUsers.slice(0, 9).map((emp, idx) => {
-                        const annual = emp.leaveBalance?.annual ?? 12;
-                        const sick = emp.leaveBalance?.sick ?? 8;
-                        const casual = emp.leaveBalance?.casual ?? 5;
-                        const annualTotalVal = emp.leaveBalance?.annualTotal ?? 18;
-                        const sickTotal = emp.leaveBalance?.sickTotal ?? 10;
-                        const casualTotal = emp.leaveBalance?.casualTotal ?? 6;
-                        const initials = (emp.name || "??").split(" ").map((n: string) => n[0]).join("").toUpperCase().slice(0, 2);
-                        const color = emp.color || EMP_COLORS[idx % EMP_COLORS.length] || "#5C5CFF";
-                        return (
-                          <div key={emp.id} className="bg-white rounded-lg border border-gray-200 p-4">
-                            <div className="flex items-center gap-3 mb-3">
-                              <Avt initials={initials} color={color} size="sm" />
-                              <div>
-                                <p className="text-sm font-medium text-gray-800">{emp.name}</p>
-                                <p className="text-xs text-gray-500">{emp.dept || emp.department}</p>
+              {tab === "Overview" && (() => {
+                const todayIso = new Date().toISOString().slice(0, 10);
+                const next7DaysIso = new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10);
+
+                const pendingCount = reqs.filter(r => r.status === "Pending").length;
+                const approvedTodayCount = reqs.filter(r => r.status === "Approved" && (r.approvedAt?.slice(0, 10) === todayIso || r.createdAt?.slice(0, 10) === todayIso || r.from === todayIso)).length;
+                const onLeaveNowCount = reqs.filter(r => r.status === "Approved" && r.from <= todayIso && r.to >= todayIso).length;
+                const upcomingCount = reqs.filter(r => r.status === "Approved" && r.from > todayIso && r.from <= next7DaysIso).length;
+
+                return (
+                  <div className="p-6 space-y-5">
+                    <div className="grid grid-cols-4 gap-4">
+                      {[
+                        ["Pending Approval", String(pendingCount), "text-amber-600", "bg-amber-50"],
+                        ["Approved Today", String(approvedTodayCount), "text-green-600", "bg-green-50"],
+                        ["On Leave Now", String(onLeaveNowCount), "text-blue-600", "bg-blue-50"],
+                        ["Upcoming (7 days)", String(upcomingCount), "text-purple-600", "bg-purple-50"],
+                      ].map(([l, v, tc, bc]) => (
+                        <div
+                          key={l as string}
+                          className={cn(
+                            "flex items-center justify-between px-5 py-3.5 rounded-lg",
+                            bc
+                          )}
+                        >
+                          <span className="text-sm text-gray-700">{l}</span>
+                          <span className={cn("text-xl font-semibold", tc)}>{v}</span>
+                        </div>
+                      ))}
+                    </div>
+                    {dbUsers.length === 0 ? (
+                      <div className="text-center py-8 text-xs text-gray-400">No team leave records found</div>
+                    ) : (
+                      <div className="grid grid-cols-3 gap-4">
+                        {dbUsers.slice(0, 9).map((emp, idx) => {
+                          const empEmail = String(emp.email || emp.workEmail || "").toLowerCase();
+                          const empApproved = reqs.filter(r => String(r.employeeEmail || r.applicantEmail || "").toLowerCase() === empEmail && r.status === "Approved");
+                          
+                          const annualUsed = empApproved.filter(r => (r.type || "").toLowerCase().includes("annual")).reduce((acc, r) => acc + (Number(r.days) || 1), 0);
+                          const sickUsed = empApproved.filter(r => (r.type || "").toLowerCase().includes("sick")).reduce((acc, r) => acc + (Number(r.days) || 1), 0);
+                          const casualUsed = empApproved.filter(r => (r.type || "").toLowerCase().includes("casual")).reduce((acc, r) => acc + (Number(r.days) || 1), 0);
+
+                          const annualTotalVal = emp.leaveBalance?.annualTotal ?? 18;
+                          const sickTotal = emp.leaveBalance?.sickTotal ?? 10;
+                          const casualTotal = emp.leaveBalance?.casualTotal ?? 6;
+
+                          const initials = (emp.name || emp.displayName || emp.email || "EM").split(" ").map((n: string) => n[0]).join("").toUpperCase().slice(0, 2);
+                          const color = emp.color || EMP_COLORS[idx % EMP_COLORS.length] || "#5C5CFF";
+                          return (
+                            <div key={emp.id || emp.email} className="bg-white rounded-lg border border-gray-200 p-4">
+                              <div className="flex items-center gap-3 mb-3">
+                                <Avt initials={initials} color={color} size="sm" />
+                                <div>
+                                  <p className="text-sm font-medium text-gray-800">{emp.name || emp.email}</p>
+                                  <p className="text-xs text-gray-500">{emp.dept || emp.department || "Employee"}</p>
+                                </div>
+                              </div>
+                              <div className="space-y-2">
+                                {([["Annual", annualUsed, annualTotalVal], ["Sick", sickUsed, sickTotal], ["Casual", casualUsed, casualTotal]] as [string, number, number][]).map(([t, used, tot]) => (
+                                  <div key={t}>
+                                    <div className="flex justify-between text-xs text-gray-500 mb-0.5">
+                                      <span>{t}</span>
+                                      <span>{Math.max(0, tot - used)} left / {tot}</span>
+                                    </div>
+                                    <div className="w-full bg-gray-100 rounded-full h-1">
+                                      <div className="h-1 bg-[#5C5CFF] rounded-full" style={{ width: `${tot > 0 ? Math.min(100, (used / tot) * 100) : 0}%` }} />
+                                    </div>
+                                  </div>
+                                ))}
                               </div>
                             </div>
-                            <div className="space-y-2">
-                              {([["Annual", annual, annualTotalVal], ["Sick", sick, sickTotal], ["Casual", casual, casualTotal]] as [string, number, number][]).map(([t, used, tot]) => (
-                                <div key={t}>
-                                  <div className="flex justify-between text-xs text-gray-500 mb-0.5">
-                                    <span>{t}</span>
-                                    <span>{tot - used} left / {tot}</span>
-                                  </div>
-                                  <div className="w-full bg-gray-100 rounded-full h-1">
-                                    <div className="h-1 bg-[#5C5CFF] rounded-full" style={{ width: `${tot > 0 ? (used / tot) * 100 : 0}%` }} />
-                                  </div>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-              )}
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
 
               {tab === "Requests" && (
                 <div className="p-6">
@@ -410,7 +441,7 @@ export function LeavePage({
             <SelectField
               label="Leave Type"
               value={applyType}
-              onChange={(v: string) => setApplyType(v)}
+              onChange={(e: any) => setApplyType(typeof e === "string" ? e : e?.target?.value || "")}
               options={[
                 "Annual Leave",
                 "Sick Leave",
@@ -421,9 +452,21 @@ export function LeavePage({
               ]}
             />
             <div className="grid grid-cols-2 gap-4">
-              <InputField label="From Date" type="date" value={applyFrom} onChange={(e: any) => setApplyFrom(e.target.value)} required />
-              <InputField label="To Date" type="date" value={applyTo} onChange={(e: any) => setApplyTo(e.target.value)} required />
+              <InputField label="From Date" type="date" value={applyFrom} onChange={(e: any) => setApplyFrom(typeof e === "string" ? e : e?.target?.value || "")} required />
+              <InputField label="To Date" type="date" value={applyTo} onChange={(e: any) => setApplyTo(typeof e === "string" ? e : e?.target?.value || "")} required />
             </div>
+            {applyFrom && applyTo && (() => {
+              try {
+                const f = new Date(applyFrom);
+                const t = new Date(applyTo);
+                const diff = Math.max(1, Math.ceil((t.getTime() - f.getTime()) / 86400000) + 1);
+                return !isNaN(diff) ? (
+                  <div className="px-3 py-1.5 bg-[#EEF2FF] rounded-md text-xs font-semibold text-[#5C5CFF]">
+                    Selected Duration: {diff} day{diff > 1 ? "s" : ""}
+                  </div>
+                ) : null;
+              } catch (_) { return null; }
+            })()}
             <div>
               <label className="block text-xs font-semibold text-gray-700 mb-1">Reason <span className="text-red-500">*</span></label>
               <textarea

@@ -411,8 +411,8 @@ export function MySpacePage({
 
   // Real-Time Firestore Listener on /organizations/{companyId}/leave_requests
   useEffect(() => {
-    if (!targetCompanyId || targetCompanyId === "default") return;
-    const colRef = collection(db, "organizations", targetCompanyId, "leave_requests");
+    const compId = targetCompanyId && targetCompanyId !== "default" ? targetCompanyId : "default";
+    const colRef = collection(db, "organizations", compId, "leave_requests");
     const unsub = onSnapshot(colRef, (snap) => {
       const list = snap.docs.map(d => ({ id: d.id, ...d.data() }));
       setDbLeaveRequests(list);
@@ -434,13 +434,13 @@ export function MySpacePage({
 
     return list.filter((req) => {
       if (!req) return false;
-      // Applicant can ALWAYS see their own request
-      if (req.applicantEmail && String(req.applicantEmail).toLowerCase() === normalizedUserEmail) return true;
+      const reqEmail = String(req.applicantEmail || req.employeeEmail || "").toLowerCase();
+      if (reqEmail && reqEmail === normalizedUserEmail) return true;
 
       const rolesArr = Array.isArray(req.targetRoles) ? req.targetRoles : [];
 
       if (normalizedRole === "super_admin" || normalizedRole === "admin") {
-        return true; // Super Admin sees all
+        return true;
       }
       if (normalizedRole === "hr_admin") {
         return rolesArr.includes("hr_admin") || rolesArr.includes("super_admin");
@@ -454,11 +454,11 @@ export function MySpacePage({
 
   // Compute Used & Remaining Leave Days from Approved Requests
   const userApprovedLeaves = useMemo(() => {
-    return visibleLeaveRequests.filter((r) => 
-      r && 
-      String(r.applicantEmail || "").toLowerCase() === String(userEmail || "").toLowerCase() && 
-      r.status === "Approved"
-    );
+    const curEmail = String(userEmail || auth.currentUser?.email || "").toLowerCase();
+    return visibleLeaveRequests.filter((r) => {
+      const rEmail = String(r.applicantEmail || r.employeeEmail || "").toLowerCase();
+      return rEmail === curEmail && r.status === "Approved";
+    });
   }, [visibleLeaveRequests, userEmail]);
 
   const usedAnnual = useMemo(() => {
@@ -631,52 +631,65 @@ export function MySpacePage({
 
   // Apply Leave Submit Handler
   const handleApplyLeaveSubmit = async () => {
-    if (!targetCompanyId || targetCompanyId === "default" || !userEmail) return;
+    const compId = targetCompanyId && targetCompanyId !== "default" ? targetCompanyId : "default";
+    const appEmail = userEmail || "employee@company.com";
+    const empName = userName || user?.displayName || appEmail.split("@")[0];
+    const normalizedRole = String(userRole || "employee").toLowerCase();
+
     setIsApplyingLeave(true);
     try {
-      const normalizedRole = String(userRole || "employee").toLowerCase();
-      let targetRoles: string[] = [];
-
+      let targetRoles: string[] = ["manager", "hr_admin", "super_admin"];
       if (normalizedRole === "super_admin" || normalizedRole === "admin") {
         targetRoles = ["super_admin"];
       } else if (normalizedRole === "hr_admin") {
         targetRoles = ["super_admin", "hr_admin"];
       } else if (normalizedRole === "manager") {
-        targetRoles = ["hr_admin"];
-      } else {
-        targetRoles = ["manager", "hr_admin"];
+        targetRoles = ["hr_admin", "super_admin"];
       }
 
       let numDays = 1;
       try {
-        const dFrom = new Date(applyLeaveFrom);
-        const dTo = new Date(applyLeaveTo);
-        const diffTime = Math.abs(dTo.getTime() - dFrom.getTime());
-        numDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
-        if (isNaN(numDays) || numDays < 1) numDays = 1;
+        if (applyLeaveFrom && applyLeaveTo) {
+          const dFrom = new Date(applyLeaveFrom);
+          const dTo = new Date(applyLeaveTo);
+          const diffTime = Math.abs(dTo.getTime() - dFrom.getTime());
+          numDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
+          if (isNaN(numDays) || numDays < 1) numDays = 1;
+        }
       } catch (_) {}
 
-      const reqId = `LV_${Date.now()}`;
+      const reqId = `LV_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
       const newLeaveDoc = {
         id: reqId,
-        type: applyLeaveType || "Annual Leave",
-        from: applyLeaveFrom,
-        to: applyLeaveTo,
-        days: numDays,
-        applied: new Date().toLocaleDateString("en-US", { month: "short", day: "numeric" }),
-        status: "Pending",
-        approver: normalizedRole === "super_admin" ? "Super Admin" : "Reporting Manager",
-        applicantEmail: userEmail,
-        applicantName: displayName || userEmail.split("@")[0],
+        employee: empName,
+        employeeEmail: appEmail,
+        applicantName: empName,
+        applicantEmail: appEmail,
         applicantRole: normalizedRole,
         targetRoles: targetRoles,
-        reason: applyLeaveReason || "",
+        approver: normalizedRole === "super_admin" ? "Super Admin" : "Reporting Manager",
+        type: applyLeaveType || "Annual Leave",
+        from: applyLeaveFrom || new Date().toISOString().slice(0, 10),
+        to: applyLeaveTo || new Date().toISOString().slice(0, 10),
+        days: numDays,
+        reason: applyLeaveReason.trim() || "Leave request",
+        status: "Pending",
+        applied: new Date().toLocaleDateString("en-US", { month: "short", day: "numeric" }),
         createdAt: new Date().toISOString(),
       };
 
-      await setDoc(doc(db, "organizations", targetCompanyId, "leave_requests", reqId), newLeaveDoc);
+      // Immediate UI update
+      setDbLeaveRequests((prev: any[]) => [newLeaveDoc, ...(Array.isArray(prev) ? prev : [])]);
       setShowApplyLeave(false);
       setApplyLeaveReason("");
+
+      // Firestore Write
+      await setDoc(doc(db, "organizations", compId, "leave_requests", reqId), newLeaveDoc);
+      if (compId !== "default") {
+        try {
+          await setDoc(doc(db, "organizations", "default", "leave_requests", reqId), newLeaveDoc);
+        } catch (_) {}
+      }
     } catch (err) {
       console.error("Error submitting leave application:", err);
     } finally {
@@ -4112,14 +4125,26 @@ export function MySpacePage({
               label="Leave Type" 
               options={["Annual Leave","Sick Leave","Casual Leave","Unpaid Leave","Compensatory Leave"]} 
               value={applyLeaveType} 
-              onChange={e=>setApplyLeaveType(e.target.value)} 
+              onChange={(e: any) => setApplyLeaveType(typeof e === "string" ? e : e?.target?.value || "")} 
               required 
             />
             <div className="grid grid-cols-2 gap-4">
-              <InputField label="From Date" type="date" value={applyLeaveFrom} onChange={e=>setApplyLeaveFrom(e.target.value)} required />
-              <InputField label="To Date" type="date" value={applyLeaveTo} onChange={e=>setApplyLeaveTo(e.target.value)} required />
+              <InputField label="From Date" type="date" value={applyLeaveFrom} onChange={(e: any) => setApplyLeaveFrom(typeof e === "string" ? e : e?.target?.value || "")} required />
+              <InputField label="To Date" type="date" value={applyLeaveTo} onChange={(e: any) => setApplyLeaveTo(typeof e === "string" ? e : e?.target?.value || "")} required />
             </div>
-            <InputField label="Reason" value={applyLeaveReason} onChange={e=>setApplyLeaveReason(e.target.value)} placeholder="Brief reason for leave" required />
+            {applyLeaveFrom && applyLeaveTo && (() => {
+              try {
+                const f = new Date(applyLeaveFrom);
+                const t = new Date(applyLeaveTo);
+                const diff = Math.max(1, Math.ceil((t.getTime() - f.getTime()) / 86400000) + 1);
+                return !isNaN(diff) ? (
+                  <div className="px-3 py-1.5 bg-[#EEF2FF] rounded-md text-xs font-semibold text-[#5C5CFF]">
+                    Selected Duration: {diff} day{diff > 1 ? "s" : ""}
+                  </div>
+                ) : null;
+              } catch (_) { return null; }
+            })()}
+            <InputField label="Reason" value={applyLeaveReason} onChange={(e: any) => setApplyLeaveReason(typeof e === "string" ? e : e?.target?.value || "")} placeholder="Brief reason for leave" required />
             <div>
               <label className="text-sm font-medium text-gray-700 block mb-1.5">Attachments</label>
               <button type="button" className="flex items-center gap-2 px-3 py-2 border border-dashed border-gray-300 rounded-lg text-xs text-gray-500 hover:border-[#5C5CFF]/40">

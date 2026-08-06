@@ -141,6 +141,7 @@ export function AppShell() {
   const [showTasksFilter, setShowTasksFilter] = useState(false);
   const [showApplyLeave, setShowApplyLeave] = useState(false);
   const [showCreateTask, setShowCreateTask] = useState(false);
+  const [boardInsightsOpen, setBoardInsightsOpen] = useState(false);
   const [showCreatePost, setShowCreatePost] = useState(false);
   const [showCreateAnnouncement, setShowCreateAnnouncement] = useState(false);
   const [showCreateDiscussion, setShowCreateDiscussion] = useState(false);
@@ -478,42 +479,45 @@ export function AppShell() {
         </>
       );
     }
-  } else if (page === "documents") {
+  } else if (page === "tasks") {
     headerToolbar = (
       <>
         <div className="relative w-64 h-[38px] flex items-center gap-2 px-3 bg-[#F6F7F9] border border-[#E8E9ED] rounded-[9px]">
           <Search size={14} className="text-[#9CA0AB] flex-shrink-0" />
           <input
             type="text"
-            placeholder="Search..."
-            value={docsSearch}
-            onChange={(e) => setDocsSearch(e.target.value)}
+            placeholder="Search Tasks..."
+            value={tasksSearch}
+            onChange={(e) => setTasksSearch(e.target.value)}
             className="w-full bg-transparent text-[13px] text-[#16181D] placeholder-[#9CA0AB] outline-none"
           />
         </div>
         <div className="flex-1" />
         <button
-          onClick={() => setShowTeamFilter(true)}
+          onClick={() => setShowTasksFilter(true)}
           className="h-10 w-10 flex items-center justify-center p-0 rounded-[10px] border border-[#E5E7EB] bg-[#FFFFFF] text-[#16181D] hover:bg-gray-55 transition-colors cursor-pointer"
+          title="Filters"
         >
           <SlidersHorizontal size={16} />
         </button>
         <button
-          onClick={() => setShowUploadDoc(true)}
-          className="h-10 px-[18px] rounded-[10px] border border-[#E5E7EB] bg-[#FFFFFF] text-[#16181D] text-[14px] font-semibold flex items-center gap-2 hover:bg-gray-55 transition-colors cursor-pointer"
+          onClick={() => setBoardInsightsOpen((v) => !v)}
+          className="h-10 w-10 flex items-center justify-center p-0 rounded-[10px] border border-[#E5E7EB] bg-[#FFFFFF] text-[#16181D] hover:bg-gray-55 transition-colors cursor-pointer"
+          title="Board Insights"
         >
-          <Upload size={16} />
-          Upload
+          <TrendingUp size={16} />
         </button>
         <button
-          onClick={() => setShowNewDoc(true)}
+          onClick={() => setShowCreateTask(true)}
           className="h-10 px-[18px] rounded-[10px] border border-[#E5E7EB] bg-[#FFFFFF] text-[#16181D] text-[14px] font-semibold flex items-center gap-2 hover:bg-gray-55 transition-colors cursor-pointer"
         >
           <Plus size={16} strokeWidth={2.2} />
-          New Document
+          Create Task
         </button>
       </>
     );
+  } else if (page === "documents") {
+    headerToolbar = null;
   }
 
   return (
@@ -636,6 +640,11 @@ export function AppShell() {
             setLeaveSection={setLeaveSection}
             leaveTab={leaveTab}
             tasksTab={tasksTab}
+            tasksSearch={tasksSearch}
+            showTasksFilter={showTasksFilter}
+            setShowTasksFilter={setShowTasksFilter}
+            boardInsightsOpen={boardInsightsOpen}
+            setBoardInsightsOpen={setBoardInsightsOpen}
             selectedEmployee={selectedEmployee}
             profileOrigin={profileOrigin}
             documentsTab={documentsTab}
