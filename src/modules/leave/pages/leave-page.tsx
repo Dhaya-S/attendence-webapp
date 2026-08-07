@@ -44,7 +44,7 @@ export function LeavePage({
   onSectionChange: (s: "My Space" | "My Team") => void;
   activeTab: string;
 }) {
-  const { companyId, email, user, displayName, role } = useAuth();
+  const { companyId, email, user, displayName, role, hasPermission } = useAuth();
   const [tab, setTab] = useState("Overview");
   const [leaveView, setLeaveView] = useState<"Balance" | "Requests" | "Calendar" | "Analytics" | "Status">("Balance");
 
@@ -319,8 +319,8 @@ export function LeavePage({
                     <table className="w-full text-sm">
                       <thead className="bg-gray-50">
                         <tr>
-                          {["Employee","Type","From","To","Days","Reason","Status","Actions"].map((h) => (
-                            <th key={h} className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">{h}</th>
+                          {["Employee","Type","From","To","Days","Reason","Status", hasPermission("approve-leave") ? "Actions" : null].filter(Boolean).map((h) => (
+                            <th key={h as string} className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">{h}</th>
                           ))}
                         </tr>
                       </thead>
@@ -345,14 +345,16 @@ export function LeavePage({
                             <td className="px-4 py-3 font-medium text-gray-800">{r.days}</td>
                             <td className="px-4 py-3 text-gray-500 text-xs max-w-xs truncate">{r.reason}</td>
                             <td className="px-4 py-3"><StatusBadge status={r.status} /></td>
-                            <td className="px-4 py-3">
-                              {r.status === "Pending" && (
-                                <div className="flex gap-1">
-                                  <button onClick={() => approve(r.id)} className="px-2 py-1 bg-green-50 text-green-700 rounded text-xs hover:bg-green-100 flex items-center gap-1 cursor-pointer"><Check size={10} />Approve</button>
-                                  <button onClick={() => reject(r.id)} className="px-2 py-1 bg-red-50 text-red-600 rounded text-xs hover:bg-red-100 flex items-center gap-1 cursor-pointer"><X size={10} />Reject</button>
-                                </div>
-                              )}
-                            </td>
+                            {hasPermission("approve-leave") && (
+                              <td className="px-4 py-3">
+                                {r.status === "Pending" && (
+                                  <div className="flex gap-1">
+                                    <button onClick={() => approve(r.id)} className="px-2 py-1 bg-green-50 text-green-700 rounded text-xs hover:bg-green-100 flex items-center gap-1 cursor-pointer"><Check size={10} />Approve</button>
+                                    <button onClick={() => reject(r.id)} className="px-2 py-1 bg-red-50 text-red-600 rounded text-xs hover:bg-red-100 flex items-center gap-1 cursor-pointer"><X size={10} />Reject</button>
+                                  </div>
+                                )}
+                              </td>
+                            )}
                           </tr>
                         ))}
                       </tbody>

@@ -3,6 +3,7 @@ import { Check, X, ArrowDownRight } from "lucide-react";
 import { cn, fmtDate } from "@/shared/utils";
 import { Avt, StatusBadge, Drawer, Btn } from "@/shared/components";
 import { EMP_COLORS } from "@/shared/constants/colors";
+import { useAuth } from "@/shared/context/AuthContext";
 
 interface ApprovalsTabProps {
   teamReqs: any[];
@@ -19,6 +20,7 @@ export function ApprovalsTab({
   approveT,
   rejectT,
 }: ApprovalsTabProps) {
+  const { hasPermission } = useAuth();
   return (
     <div className="flex h-full overflow-hidden w-full text-left">
       <div className="flex-1 flex flex-col">
@@ -27,9 +29,9 @@ export function ApprovalsTab({
             <table className="w-full text-sm text-left">
               <thead className="bg-gray-50 border-b border-gray-200">
                 <tr>
-                  {["Employee", "Type", "Details", "Applied", "Status", "Actions"].map((h) => (
+                  {["Employee", "Type", "Details", "Applied", "Status", hasPermission("approve-leave") ? "Actions" : null].filter(Boolean).map((h) => (
                     <th
-                      key={h}
+                      key={h as string}
                       className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase"
                     >
                       {h}
@@ -76,26 +78,28 @@ export function ApprovalsTab({
                     <td className="px-4 py-3">
                       <StatusBadge status={r.status} />
                     </td>
-                    <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
-                      {r.status === "Pending" && (
-                        <div className="flex gap-1.5">
-                          <button
-                            onClick={() => approveT(r.id)}
-                            className="px-2.5 py-1 bg-green-50 text-green-700 rounded-lg text-xs font-semibold hover:bg-green-100 flex items-center gap-1 cursor-pointer border-0"
-                          >
-                            <Check size={10} />
-                            Approve
-                          </button>
-                          <button
-                            onClick={() => rejectT(r.id)}
-                            className="px-2.5 py-1 bg-red-50 text-red-650 rounded-lg text-xs font-semibold hover:bg-red-100 flex items-center gap-1 cursor-pointer border-0"
-                          >
-                            <X size={10} />
-                            Reject
-                          </button>
-                        </div>
-                      )}
-                    </td>
+                    {hasPermission("approve-leave") && (
+                      <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
+                        {r.status === "Pending" && (
+                          <div className="flex gap-1.5">
+                            <button
+                              onClick={() => approveT(r.id)}
+                              className="px-2.5 py-1 bg-green-50 text-green-700 rounded-lg text-xs font-semibold hover:bg-green-100 flex items-center gap-1 cursor-pointer border-0"
+                            >
+                              <Check size={10} />
+                              Approve
+                            </button>
+                            <button
+                              onClick={() => rejectT(r.id)}
+                              className="px-2.5 py-1 bg-red-50 text-red-650 rounded-lg text-xs font-semibold hover:bg-red-100 flex items-center gap-1 cursor-pointer border-0"
+                            >
+                              <X size={10} />
+                              Reject
+                            </button>
+                          </div>
+                        )}
+                      </td>
+                    )}
                   </tr>
                 ))}
               </tbody>
@@ -138,7 +142,7 @@ export function ApprovalsTab({
         footer={
           (() => {
             const req = teamReqs.find((r) => r.id === tApprovalDetailId);
-            if (!req || req.status !== "Pending") return null;
+            if (!req || req.status !== "Pending" || !hasPermission("approve-leave")) return null;
             return (
               <>
                 <Btn
@@ -149,19 +153,16 @@ export function ApprovalsTab({
                     setTApprovalDetailId(null);
                   }}
                 >
-                  <X size={14} />
-                  Reject Request
+                  <X size={14} className="mr-1" /> Reject
                 </Btn>
                 <Btn
-                  variant="primary"
-                  className="bg-green-600 hover:bg-green-700 focus:ring-green-500 text-white"
+                  className="bg-green-600 hover:bg-green-700 text-white"
                   onClick={() => {
                     approveT(req.id);
                     setTApprovalDetailId(null);
                   }}
                 >
-                  <Check size={14} />
-                  Approve Request
+                  <Check size={14} className="mr-1" /> Approve
                 </Btn>
               </>
             );

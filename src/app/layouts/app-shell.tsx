@@ -32,7 +32,7 @@ import { useAuth } from "@/shared/context/AuthContext";
 
 
 export function AppShell() {
-  const { user, role, isLoading, isSetupComplete, displayName, email } = useAuth();
+  const { user, role, isLoading, isSetupComplete, displayName, email, hasPermission } = useAuth();
   const [page, setPage] = useState<AppPage>("login");
   const [selectedEmployee, setSelectedEmployee] = useState<Employee>(EMPLOYEES[0]);
 
@@ -85,6 +85,7 @@ export function AppShell() {
   const [tasksTab, setTasksTab] = useState<string>("Board");
   const [documentsTab, setDocumentsTab] = useState<string>("Company");
   const [settingsTab, setSettingsTab] = useState<string>("General");
+  const [manageAccountSection, setManageAccountSection] = useState<string>("Users");
 
   // Lifted child views & filter toolbar states
   const [teamTab, setTeamTab] = useState<string>("Overview");
@@ -320,7 +321,10 @@ export function AppShell() {
   let onHeaderTabChange: (t: string) => void = () => {};
 
   if (page === "my-space") {
-    headerTabs = ["Dashboard", "Attendance", "Leave", "Approvals", "Calendar"];
+    headerTabs = ["Dashboard", "Attendance"];
+    if (hasPermission("dashboard-leave")) headerTabs.push("Leave");
+    if (hasPermission("dashboard-approval")) headerTabs.push("Approvals");
+    headerTabs.push("Calendar");
     activeHeaderTab = mySpaceTab;
     onHeaderTabChange = setMySpaceTab;
   } else if (page === "attendance") {
@@ -332,7 +336,9 @@ export function AppShell() {
     activeHeaderTab = leaveTab;
     onHeaderTabChange = setLeaveTab;
   } else if (page === "team") {
-    headerTabs = ["Overview", "Reportees", "Approvals", "Feed", "Announcements"];
+    headerTabs = ["Overview", "Reportees"];
+    if (hasPermission("team-approval")) headerTabs.push("Approvals");
+    headerTabs.push("Feed", "Announcements");
     activeHeaderTab = teamTab;
     onHeaderTabChange = setTeamTab;
   } else if (page === "organization") {
@@ -391,13 +397,15 @@ export function AppShell() {
           >
             <SlidersHorizontal size={16} />
           </button>
-          <button
-            onClick={() => setShowCreateAnnouncement(v => !v)}
-            className="h-10 px-[18px] rounded-[10px] border border-[#E5E7EB] bg-[#FFFFFF] text-[#16181D] text-[14px] font-semibold flex items-center gap-2 hover:bg-gray-55 transition-colors cursor-pointer"
-          >
-            <Plus size={16} strokeWidth={2.2} />
-            Create Announcement
-          </button>
+          {hasPermission("create-announcement") && (
+            <button
+              onClick={() => setShowCreateAnnouncement(v => !v)}
+              className="h-10 px-[18px] rounded-[10px] border border-[#E5E7EB] bg-[#FFFFFF] text-[#16181D] text-[14px] font-semibold flex items-center gap-2 hover:bg-gray-55 transition-colors cursor-pointer"
+            >
+              <Plus size={16} strokeWidth={2.2} />
+              Create Announcement
+            </button>
+          )}
         </>
       );
     } else if (teamTab === "Reportees") {
@@ -507,13 +515,15 @@ export function AppShell() {
         >
           <TrendingUp size={16} />
         </button>
-        <button
-          onClick={() => setShowCreateTask(true)}
-          className="h-10 px-[18px] rounded-[10px] border border-[#E5E7EB] bg-[#FFFFFF] text-[#16181D] text-[14px] font-semibold flex items-center gap-2 hover:bg-gray-55 transition-colors cursor-pointer"
-        >
-          <Plus size={16} strokeWidth={2.2} />
-          Create Task
-        </button>
+        {hasPermission("create-task") && (
+          <button
+            onClick={() => setShowCreateTask(true)}
+            className="h-10 px-[18px] rounded-[10px] border border-[#E5E7EB] bg-[#FFFFFF] text-[#16181D] text-[14px] font-semibold flex items-center gap-2 hover:bg-gray-55 transition-colors cursor-pointer"
+          >
+            <Plus size={16} strokeWidth={2.2} />
+            Create Task
+          </button>
+        )}
       </>
     );
   } else if (page === "documents") {
@@ -548,28 +558,35 @@ export function AppShell() {
             if (action === "employee") {
               navigate("employee-add");
             } else if (action === "department") {
-              navigate("organization");
-              setOrgSection("Management");
+              setManageAccountSection("Organization Setup");
+              navigate("manage-account");
             } else if (action === "shift") {
-              navigate("organization");
-              setOrgSection("Management");
+              setManageAccountSection("Automation");
+              navigate("manage-account");
             } else if (action === "attendance") {
+              setAttendanceSection("My Space");
               navigate("attendance");
             } else if (action === "leave") {
+              setLeaveSection("My Space");
+              navigate("leave");
               setShowApplyLeave(true);
             } else if (action === "holiday") {
+              setAttendanceSection("My Space");
+              setAttendanceTab("Holidays");
               navigate("attendance");
             } else if (action === "announcement") {
               navigate("team");
               setTeamTab("Announcements");
               setShowCreateAnnouncement(true);
             } else if (action === "task") {
+              navigate("tasks");
               setShowCreateTask(true);
             } else if (action === "document") {
+              navigate("documents");
               setShowNewDoc(true);
             } else if (action === "policy") {
-              navigate("organization");
-              setOrgSection("Management");
+              setManageAccountSection("Organization Setup");
+              navigate("manage-account");
             } else if (action === "discussion") {
               navigate("team");
               setTeamTab("Feed");
@@ -649,6 +666,7 @@ export function AppShell() {
             profileOrigin={profileOrigin}
             documentsTab={documentsTab}
             settingsTab={settingsTab}
+            manageAccountSection={manageAccountSection}
           />
         </main>
 

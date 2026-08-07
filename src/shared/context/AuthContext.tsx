@@ -14,19 +14,19 @@ export interface FeaturePermissions {
 
 export const DEFAULT_FEATURE_PERMISSIONS: FeaturePermissions = {
   admin: [
-    "my-space", "team", "organization", "attendance", "leave",
-    "tasks", "documents", "settings", "support", "approvals", "reports"
+    "my-space", "dashboard-approval", "dashboard-leave", "team", "team-approval", "create-announcement", "organization", "attendance", "approve-attendance", "leave", "approve-leave",
+    "tasks", "create-task", "documents", "settings", "support", "approvals", "reports"
   ],
   hr_admin: [
-    "my-space", "team", "organization", "attendance", "leave",
-    "tasks", "documents", "support", "approvals", "reports"
+    "my-space", "dashboard-approval", "dashboard-leave", "team", "team-approval", "create-announcement", "organization", "attendance", "approve-attendance", "leave", "approve-leave",
+    "tasks", "create-task", "documents", "support", "approvals", "reports"
   ],
   manager: [
-    "my-space", "team", "attendance", "leave",
-    "tasks", "documents", "support", "approvals", "reports"
+    "my-space", "dashboard-approval", "dashboard-leave", "team", "team-approval", "create-announcement", "attendance", "approve-attendance", "leave", "approve-leave",
+    "tasks", "create-task", "documents", "support", "approvals", "reports"
   ],
   employee: [
-    "my-space", "attendance", "leave", "tasks", "documents", "support"
+    "my-space", "dashboard-leave", "attendance", "leave", "tasks", "documents", "support"
   ],
 };
 

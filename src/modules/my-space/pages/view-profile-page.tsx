@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   Edit,
   Key,
@@ -20,8 +20,14 @@ import {
   PageHeader,
   Modal,
 } from "@/shared/components";
+import { useAuth } from "@/shared/context/AuthContext";
+import { db } from "@/shared/utils/firebase";
+import { doc, onSnapshot } from "firebase/firestore";
 
 export function ViewProfilePage({ navigate }: { navigate: (p: AppPage) => void }) {
+  const { email, companyId } = useAuth();
+  const [profileData, setProfileData] = useState<any>(null);
+  
   const [tab, setTab] = useState("Personal");
   const [editMode, setEditMode] = useState(false);
   const [showChangePwd, setShowChangePwd] = useState(false);
@@ -30,6 +36,34 @@ export function ViewProfilePage({ navigate }: { navigate: (p: AppPage) => void }
     setShowToast(true);
     setTimeout(() => setShowToast(false), 2500);
   };
+
+  useEffect(() => {
+    if (!email || !companyId) return;
+    const userRef = doc(db, "organizations", companyId, "users", email);
+    const unsub = onSnapshot(userRef, (snap) => {
+      if (snap.exists()) {
+        setProfileData(snap.data());
+      }
+    });
+    return () => unsub();
+  }, [email, companyId]);
+
+  const firstName = profileData?.firstName || profileData?.name?.split(" ")[0] || "User";
+  const lastName = profileData?.lastName || profileData?.name?.split(" ").slice(1).join(" ") || "";
+  const fullName = profileData?.name || `${firstName} ${lastName}`.trim() || "User Name";
+  const initials = firstName[0] + (lastName[0] || "");
+  const role = profileData?.designation || profileData?.role || "Employee";
+  const dept = profileData?.dept || "Company";
+  const phone = profileData?.phone || "—";
+  const address = profileData?.address || "—";
+  const gender = profileData?.gender || "Prefer not to say";
+  const dob = profileData?.dob || "—";
+  const joinDate = profileData?.joinDate || "—";
+  const empId = profileData?.employeeId || profileData?.id || "—";
+  const branch = profileData?.branch || "HQ";
+  const empType = profileData?.empType || "Full-Time";
+  const manager = profileData?.manager || "—";
+  const shift = profileData?.shift || "General (9AM–6PM)";
 
   const SESSIONS = [
     {
@@ -60,7 +94,7 @@ export function ViewProfilePage({ navigate }: { navigate: (p: AppPage) => void }
         {/* Profile Card */}
         <div className="bg-white rounded-xl border border-gray-200 p-6 mb-6 flex items-center gap-6">
           <div className="relative">
-            <Avt initials="AA" color="#5C5CFF" size="xl" />
+            <Avt initials={initials} color="#5C5CFF" size="xl" />
             <button
               className="absolute -bottom-1 -right-1 w-7 h-7 rounded-full bg-[#5C5CFF] flex items-center justify-center border-2 border-white hover:bg-[#4A4AE0] transition-colors cursor-pointer"
               onClick={() => toast()}
@@ -69,22 +103,22 @@ export function ViewProfilePage({ navigate }: { navigate: (p: AppPage) => void }
             </button>
           </div>
           <div className="flex-1">
-            <h2 className="text-xl font-semibold text-gray-900">Alex Admin</h2>
-            <p className="text-sm text-gray-500">Administrator · Acme Corporation</p>
+            <h2 className="text-xl font-semibold text-gray-900">{fullName}</h2>
+            <p className="text-sm text-gray-500">{role} · {dept}</p>
             <div className="flex items-center gap-4 mt-2">
               <span className="text-xs text-gray-555 flex items-center gap-1">
                 <Mail size={12} />
-                alex.admin@acmecorp.com
+                {email || "email@example.com"}
               </span>
               <span className="text-xs text-gray-555 flex items-center gap-1">
                 <Phone size={12} />
-                +1 (555) 000-0001
+                {phone}
               </span>
             </div>
           </div>
           <div className="text-right flex-shrink-0">
             <div className="text-xs text-gray-400 mb-1">Member since</div>
-            <div className="text-sm font-medium text-gray-805">Jan 15, 2024</div>
+            <div className="text-sm font-medium text-gray-805">{joinDate}</div>
           </div>
         </div>
 
@@ -133,19 +167,19 @@ export function ViewProfilePage({ navigate }: { navigate: (p: AppPage) => void }
                       <option>Non-binary</option>
                     </SelectField>
                     <div className="col-span-2">
-                      <InputField label="Address" placeholder="Street, City, State, ZIP" />
+                      <InputField label="Address" placeholder="Street, City, State, ZIP" defaultValue={address} />
                     </div>
                   </>
                 ) : (
                   (
                     [
-                      ["First Name", "Alex"],
-                      ["Last Name", "Admin"],
-                      ["Work Email", "alex.admin@acmecorp.com"],
-                      ["Phone", "+1 (555) 000-0001"],
-                      ["Date of Birth", "—"],
-                      ["Gender", "Prefer not to say"],
-                      ["Address", "350 Fifth Avenue, New York, NY"],
+                      ["First Name", firstName],
+                      ["Last Name", lastName],
+                      ["Work Email", email || "—"],
+                      ["Phone", phone],
+                      ["Date of Birth", dob],
+                      ["Gender", gender],
+                      ["Address", address],
                     ] as [string, string][]
                   ).map(([k, v]) => (
                     <div key={k}>
@@ -160,14 +194,14 @@ export function ViewProfilePage({ navigate }: { navigate: (p: AppPage) => void }
               <div className="grid grid-cols-2 gap-4">
                 {(
                   [
-                    ["Employee ID", "ADM-001"],
-                    ["Join Date", "Jan 15, 2024"],
-                    ["Department", "Administration"],
-                    ["Designation", "System Administrator"],
-                    ["Branch", "New York HQ"],
-                    ["Employment Type", "Full-Time"],
-                    ["Reporting Manager", "CEO"],
-                    ["Shift", "General (9AM–6PM)"],
+                    ["Employee ID", empId],
+                    ["Join Date", joinDate],
+                    ["Department", dept],
+                    ["Designation", role],
+                    ["Branch", branch],
+                    ["Employment Type", empType],
+                    ["Reporting Manager", manager],
+                    ["Shift", shift],
                   ] as [string, string][]
                 ).map(([k, v]) => (
                   <div key={k}>

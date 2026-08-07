@@ -67,6 +67,7 @@ export function AddEmployeePage({ navigate }: { navigate: (p: AppPage) => void }
 
   const [phase, setPhase] = useState<"form" | "invite-review" | "invite-sent">("form");
   const [sending, setSending] = useState(false);
+  const [generatedPassword, setGeneratedPassword] = useState("");
   const [weeklyOff, setWeeklyOff] = useState("Saturday & Sunday");
   const [holidayCalendar, setHolidayCalendar] = useState("");
   const [team, setTeam] = useState("");
@@ -300,42 +301,43 @@ export function AddEmployeePage({ navigate }: { navigate: (p: AppPage) => void }
 
     setSending(true);
     const targetEmail = workEmail.trim().toLowerCase();
-    const dbRole = role === "Super Admin" ? "super_admin" : role === "HR Admin" ? "hr_admin" : role === "Manager" ? "manager" : "employee";
+    const safeRole = String(role).trim();
+    const dbRole = safeRole === "Super Admin" ? "super_admin" : safeRole === "HR Admin" ? "hr_admin" : safeRole === "Manager" ? "manager" : "employee";
     const generatedId = employeeId.trim() || `EMP${Math.floor(100 + Math.random() * 900)}`;
 
     const empData = {
-      id: generatedId,
-      firstName,
-      lastName,
-      name: `${firstName} ${lastName}`,
-      email: targetEmail,
-      workEmail: targetEmail,
-      dob,
-      gender,
-      phone,
-      personalEmail,
-      address,
-      city,
-      zipCode,
-      emergencyContact,
-      emergencyPhone,
-      empType,
-      dept: department || "General",
-      department: department || "General",
-      designation: designation || "Staff",
-      branch: branch || "Headquarters",
-      workMode,
-      role: dbRole,
-      roleLabel: role,
-      manager,
-      businessUnit,
-      team,
-      shift: shiftTemplate || "Standard Shift",
-      leavePolicy,
-      weeklyOff,
-      holidayCalendar,
+      id: String(generatedId),
+      firstName: String(firstName),
+      lastName: String(lastName),
+      name: `${String(firstName)} ${String(lastName)}`,
+      email: String(targetEmail),
+      workEmail: String(targetEmail),
+      dob: String(dob),
+      gender: String(gender),
+      phone: String(phone),
+      personalEmail: String(personalEmail),
+      address: String(address),
+      city: String(city),
+      zipCode: String(zipCode),
+      emergencyContact: String(emergencyContact),
+      emergencyPhone: String(emergencyPhone),
+      empType: String(empType),
+      dept: String(department || "General"),
+      department: String(department || "General"),
+      designation: String(designation || "Staff"),
+      branch: String(branch || "Headquarters"),
+      workMode: String(workMode),
+      role: String(dbRole),
+      roleLabel: String(role),
+      manager: String(manager),
+      businessUnit: String(businessUnit),
+      team: String(team),
+      shift: String(shiftTemplate || "Standard Shift"),
+      leavePolicy: String(leavePolicy),
+      weeklyOff: String(weeklyOff),
+      holidayCalendar: String(holidayCalendar),
       status: "Active",
-      joinDate,
+      joinDate: String(joinDate),
       attendance: 100,
       createdAt: new Date().toISOString()
     };
@@ -356,6 +358,18 @@ export function AddEmployeePage({ navigate }: { navigate: (p: AppPage) => void }
 
       if (!targetCompanyId) targetCompanyId = "default";
 
+      // 0. Sync companyId to the current admin's profile to prevent Firestore rule failures 
+      // where userCompanyId() expects companyId instead of orgId
+      if (currentUserEmail && targetCompanyId !== "default") {
+        try {
+          await setDoc(doc(db, "approved_users", currentUserEmail), {
+            companyId: targetCompanyId
+          }, { merge: true });
+        } catch (syncErr) {
+          console.warn("Could not sync companyId to admin profile:", syncErr);
+        }
+      }
+
       const finalEmpData = {
         ...empData,
         companyId: targetCompanyId,
@@ -363,30 +377,39 @@ export function AddEmployeePage({ navigate }: { navigate: (p: AppPage) => void }
       };
 
       // 1. Write user doc to /organizations/{companyId}/users/{email}
-      await setDoc(doc(db, "organizations", targetCompanyId, "users", targetEmail), finalEmpData, { merge: true });
+      try {
+        await setDoc(doc(db, "organizations", targetCompanyId, "users", targetEmail), finalEmpData, { merge: true });
+      } catch (e: any) {
+        throw new Error("Failed writing to organizations/users: " + e.message);
+      }
 
-      // 2. Write global user profile doc to /users/{email}
-      await setDoc(doc(db, "users", targetEmail), finalEmpData, { merge: true });
+      const tempPassword = Math.random().toString(36).slice(-8);
+      setGeneratedPassword(tempPassword);
 
       // 3. Write auth mapping doc to /approved_users/{email}
-      await setDoc(doc(db, "approved_users", targetEmail), {
-        email: targetEmail,
-        companyId: targetCompanyId,
-        orgId: targetCompanyId,
-        role: dbRole,
-        roleLabel: role,
-        status: "approved",
-        setupComplete: true,
-        name: `${firstName} ${lastName}`,
-        dept: department || "General",
-        designation: designation || "Staff",
-        createdAt: new Date().toISOString()
-      }, { merge: true });
+      try {
+        await setDoc(doc(db, "approved_users", targetEmail), {
+          email: finalEmpData.email,
+          companyId: finalEmpData.companyId,
+          orgId: finalEmpData.orgId,
+          role: finalEmpData.role,
+          roleLabel: finalEmpData.roleLabel,
+          status: "approved",
+          setupComplete: false,
+          name: finalEmpData.name,
+          dept: finalEmpData.department,
+          designation: finalEmpData.designation,
+          tempPassword: tempPassword,
+          createdAt: finalEmpData.createdAt
+        }, { merge: true });
+      } catch (e: any) {
+        throw new Error("Failed writing to approved_users: " + e.message);
+      }
 
       setPhase("invite-sent");
-    } catch (err) {
+    } catch (err: any) {
       console.error("Error saving employee:", err);
-      alert(`Failed to save employee to Firestore: ${err}`);
+      alert(err.message || `Failed to save employee to Firestore: ${err}`);
     } finally {
       setSending(false);
     }
@@ -451,6 +474,7 @@ export function AddEmployeePage({ navigate }: { navigate: (p: AppPage) => void }
             </p>
             <div className="p-4 bg-gray-50 rounded-lg text-xs text-left space-y-2 font-mono">
               <p><strong>Email:</strong> {workEmail}</p>
+              <p><strong>Auto-Generated Password:</strong> <span className="text-[#5C5CFF] font-bold select-all">{generatedPassword}</span></p>
               <p><strong>Role:</strong> {role} ({role.toLowerCase().replace(" ", "_")})</p>
               <p><strong>Department:</strong> {department || "General"}</p>
               <p><strong>Designation:</strong> {designation || "Staff"}</p>

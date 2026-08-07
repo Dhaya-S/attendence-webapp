@@ -9,7 +9,7 @@ import {
   ChevronDown, Star, Award, User, Phone, Briefcase
 } from "lucide-react";
 import { cn, fmtDate, db, auth } from "@/shared/utils";
-import { doc, setDoc, onSnapshot, getDoc, collection } from "firebase/firestore";
+import { doc, setDoc, onSnapshot, getDoc, collection, deleteDoc } from "firebase/firestore";
 import { useAuth, FeaturePermissions, DEFAULT_FEATURE_PERMISSIONS } from "@/shared/context/AuthContext";
 import { Employee } from "@/shared/types";
 import { EMPLOYEES } from "@/modules/organization/data/employees";
@@ -71,11 +71,12 @@ function UsersSection() {
   const [inviteRole, setInviteRole] = useState("Employee");
   const [inviteDept, setInviteDept] = useState("Engineering");
   const [sendingInvite, setSendingInvite] = useState(false);
-  const [inviteSuccess, setInviteSuccess] = useState(false);
+  const [generatedCreds, setGeneratedCreds] = useState<{email: string; password: string}[]>([]);
 
   const handleSendInvitations = async () => {
     if (!inviteEmails.trim() || !companyId) return;
     setSendingInvite(true);
+    setGeneratedCreds([]);
     try {
       const emailsList = inviteEmails.split(/[\n,]/).map(e => e.trim().toLowerCase()).filter(Boolean);
       const rMap: Record<string, string> = {
@@ -86,14 +87,20 @@ function UsersSection() {
       };
       const roleKey = rMap[inviteRole] || "employee";
 
+      const newCreds: {email: string, password: string}[] = [];
+
       for (const email of emailsList) {
+        const tempPassword = Math.random().toString(36).slice(-8);
+        newCreds.push({ email, password: tempPassword });
+
         await setDoc(doc(db, "approved_users", email), {
           email: email,
           role: roleKey,
           companyId: companyId,
           orgId: companyId,
           status: "approved",
-          createdAt: new Date().toISOString()
+          createdAt: new Date().toISOString(),
+          tempPassword: tempPassword
         }, { merge: true });
 
         await setDoc(doc(db, "organizations", companyId, "users", email), {
@@ -105,12 +112,8 @@ function UsersSection() {
           createdAt: new Date().toISOString()
         }, { merge: true });
       }
-      setInviteSuccess(true);
-      setTimeout(() => {
-        setInviteSuccess(false);
-        setShowInvite(false);
-        setInviteEmails("");
-      }, 1200);
+      setGeneratedCreds(newCreds);
+      setInviteEmails("");
     } catch (err) {
       console.error("Error creating user records in Firestore:", err);
     } finally {
@@ -315,10 +318,20 @@ function UsersSection() {
       {showInvite&&(
         <Modal title="Invite Users" onClose={()=>setShowInvite(false)}>
           <div className="space-y-4">
-            {inviteSuccess && (
-              <div className="p-3 bg-green-50 border border-green-200 rounded-lg text-xs text-green-700 flex items-center gap-2">
-                <CheckCircle size={14} className="text-green-600 flex-shrink-0" />
-                <span>Users added to Firebase successfully!</span>
+            {generatedCreds.length > 0 && (
+              <div className="p-3 bg-green-50 border border-green-200 rounded-lg text-xs flex flex-col gap-2">
+                <div className="flex items-center gap-2 text-green-700 font-medium">
+                  <CheckCircle size={14} className="text-green-600 flex-shrink-0" />
+                  <span>Users invited! (Simulation: Auto-generated passwords)</span>
+                </div>
+                <div className="bg-white p-2 rounded border border-green-100 max-h-32 overflow-auto">
+                  {generatedCreds.map(c => (
+                    <div key={c.email} className="flex justify-between py-1 border-b border-gray-100 last:border-0 text-gray-700">
+                      <span className="font-medium">{c.email}</span>
+                      <span className="font-mono text-[#5C5CFF] font-bold select-all">{c.password}</span>
+                    </div>
+                  ))}
+                </div>
               </div>
             )}
             <div>
@@ -475,6 +488,7 @@ function OrgSetupSection() {
 
   const [showAddDept, setShowAddDept] = useState(false);
   const [showAddLoc, setShowAddLoc] = useState(false);
+  const [showAddDesig, setShowAddDesig] = useState(false);
   const [newLocAddr, setNewLocAddr] = useState("");
   const [newLocCity, setNewLocCity] = useState("");
   const [newLocState, setNewLocState] = useState("");
@@ -483,6 +497,11 @@ function OrgSetupSection() {
   const [newDeptName, setNewDeptName] = useState("");
   const [newDeptHead, setNewDeptHead] = useState("Assign later");
   const [newDeptParent, setNewDeptParent] = useState("None (Top-level)");
+  const [editingDept, setEditingDept] = useState<any | null>(null);
+
+  const [newDesigName, setNewDesigName] = useState("");
+  const [newDesigLevel, setNewDesigLevel] = useState("L1");
+  const [newDesigDept, setNewDesigDept] = useState("All");
   const [realtimeCompanyEmps, setRealtimeCompanyEmps] = useState<any[]>([]);
 
   useEffect(() => {
@@ -643,6 +662,34 @@ function OrgSetupSection() {
 
   const handleAddDepartmentSubmit = async () => {
     if (!newDeptName.trim()) return;
+
+    if (editingDept) {
+      const dId = editingDept.id || `D_${editingDept.name}`;
+      const updatedObj = {
+        ...editingDept,
+        name: newDeptName.trim(),
+        head: newDeptHead.trim(),
+        parent: newDeptParent.trim(),
+        updatedAt: new Date().toISOString(),
+      };
+
+      setShowAddDept(false);
+      setEditingDept(null);
+      setNewDeptName("");
+
+      if (targetCompanyId && targetCompanyId !== "default") {
+        try {
+          await setDoc(doc(db, "organizations", targetCompanyId, "departments", dId), updatedObj, { merge: true });
+        } catch (err) {
+          console.error("Error updating department in Firestore:", err);
+          setDepartments(prev => prev.map(x => (x.id === editingDept.id || x.name === editingDept.name) ? updatedObj : x));
+        }
+      } else {
+        setDepartments(prev => prev.map(x => (x.id === editingDept.id || x.name === editingDept.name) ? updatedObj : x));
+      }
+      return;
+    }
+
     const dId = `D_${Date.now()}`;
     const newDeptObj = {
       id: dId,
@@ -662,16 +709,74 @@ function OrgSetupSection() {
 
     if (targetCompanyId && targetCompanyId !== "default") {
       try {
-        // Write to subcollection — the onSnapshot listener will update the UI
         await setDoc(doc(db, "organizations", targetCompanyId, "departments", dId), newDeptObj, { merge: true });
       } catch (err) {
         console.error("Error writing department to subcollection:", err);
-        // Fallback: add locally if Firestore write fails
         setDepartments(prev => [newDeptObj, ...prev]);
       }
     } else {
-      // No company ID — just add locally
       setDepartments(prev => [newDeptObj, ...prev]);
+    }
+  };
+
+  const handleDeleteDepartment = async (dept: any) => {
+    const dId = dept.id || dept.name;
+    const updated = departments.filter(d => (d.id || d.name) !== dId);
+    setDepartments(updated);
+
+    if (targetCompanyId && targetCompanyId !== "default") {
+      try {
+        if (dept.id) {
+          await deleteDoc(doc(db, "organizations", targetCompanyId, "departments", dept.id));
+        }
+      } catch (err) {
+        console.error("Error deleting department from Firestore:", err);
+      }
+    }
+  };
+
+  const handleAddDesignationSubmit = async () => {
+    if (!newDesigName.trim()) return;
+    const desId = `DES_${Date.now()}`;
+    const newDesigObj = {
+      id: desId,
+      name: newDesigName.trim(),
+      level: newDesigLevel,
+      parentDept: newDesigDept,
+      department: newDesigDept,
+      createdAt: new Date().toISOString(),
+    };
+
+    setShowAddDesig(false);
+    setNewDesigName("");
+
+    const updatedDesigs = [newDesigObj, ...designations];
+    setDesignations(updatedDesigs);
+
+    if (targetCompanyId && targetCompanyId !== "default") {
+      try {
+        await setDoc(doc(db, "organizations", targetCompanyId, "designations", desId), newDesigObj, { merge: true });
+        await handleSaveOrgSetup({ designations: updatedDesigs });
+      } catch (err) {
+        console.error("Error writing designation to Firestore:", err);
+      }
+    }
+  };
+
+  const handleDeleteDesignation = async (desig: any) => {
+    const desId = desig.id || desig.name;
+    const updated = designations.filter(d => (d.id || d.name) !== desId);
+    setDesignations(updated);
+
+    if (targetCompanyId && targetCompanyId !== "default") {
+      try {
+        if (desig.id) {
+          await deleteDoc(doc(db, "organizations", targetCompanyId, "designations", desig.id));
+        }
+        await handleSaveOrgSetup({ designations: updated });
+      } catch (err) {
+        console.error("Error deleting designation from Firestore:", err);
+      }
     }
   };
 
@@ -806,7 +911,13 @@ function OrgSetupSection() {
           <div className="max-w-3xl space-y-4">
             <SectionHeader title="Departments" subtitle="Configure organizational departments">
               <Btn variant="outline" size="sm"><Download size={12}/>Export</Btn>
-              <Btn size="sm" onClick={()=>setShowAddDept(true)}><Plus size={12}/>Add Department</Btn>
+              <Btn size="sm" onClick={() => {
+                setEditingDept(null);
+                setNewDeptName("");
+                setNewDeptHead("Assign later");
+                setNewDeptParent("None (Top-level)");
+                setShowAddDept(true);
+              }}><Plus size={12}/>Add Department</Btn>
             </SectionHeader>
             <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
               <table className="w-full text-sm">
@@ -819,7 +930,13 @@ function OrgSetupSection() {
                       <td className="px-4 py-3 text-xs font-semibold text-gray-800">{realtimeCompanyEmps.filter(e => (e.dept || "").toLowerCase() === (d.name || "").toLowerCase()).length}</td>
                       <td className="px-4 py-3 text-xs text-gray-500">{d.sub || 0}</td>
                       <td className="px-4 py-3"><StatusBadge status={d.active!==false?"Active":"Inactive"}/></td>
-                      <td className="px-4 py-3"><div className="flex gap-1"><button className="p-1.5 hover:bg-gray-100 rounded text-gray-400 hover:text-gray-600"><Edit size={12}/></button><button className="p-1.5 hover:bg-gray-100 rounded text-gray-400 hover:text-gray-600"><MoreHorizontal size={12}/></button></div></td>
+                      <td className="px-4 py-3"><div className="flex gap-1"><button onClick={() => {
+                        setEditingDept(d);
+                        setNewDeptName(d.name || "");
+                        setNewDeptHead(d.head || "Assign later");
+                        setNewDeptParent(d.parent || "None (Top-level)");
+                        setShowAddDept(true);
+                      }} className="p-1.5 hover:bg-gray-100 rounded text-gray-400 hover:text-gray-600" title="Edit Department"><Edit size={12}/></button><button onClick={() => handleDeleteDepartment(d)} className="p-1.5 hover:bg-red-50 rounded text-gray-400 hover:text-red-500" title="Delete Department"><Trash2 size={12}/></button></div></td>
                     </tr>
                   ))}
                 </tbody>
@@ -831,7 +948,7 @@ function OrgSetupSection() {
         {active==="Designations"&&(
           <div className="max-w-2xl space-y-4">
             <SectionHeader title="Designations" subtitle="Job titles and designations in your organization">
-              <Btn size="sm"><Plus size={12}/>Add Designation</Btn>
+              <Btn size="sm" onClick={()=>setShowAddDesig(true)}><Plus size={12}/>Add Designation</Btn>
             </SectionHeader>
             <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
               <table className="w-full text-sm">
@@ -840,10 +957,17 @@ function OrgSetupSection() {
                   {designations.map((d)=>(
                     <tr key={d.id || d.name} className="hover:bg-gray-50">
                       <td className="px-4 py-3 text-sm font-medium text-gray-800">{d.name}</td>
-                      <td className="px-4 py-3"><span className="text-[10px] bg-[#EEF2FF] text-[#5C5CFF] px-2 py-0.5 rounded font-medium">{d.level}</span></td>
-                      <td className="px-4 py-3 text-xs text-gray-500">{d.parentDept}</td>
-                      <td className="px-4 py-3 text-xs font-semibold text-gray-800">{realtimeCompanyEmps.filter(e => { const r = (e.role || e.designation || "").toLowerCase(); const n = (d.name || "").toLowerCase(); return r === n }).length}</td>
-                      <td className="px-4 py-3"><div className="flex gap-1"><button className="p-1.5 hover:bg-gray-100 rounded text-gray-400 hover:text-gray-600"><Edit size={12}/></button><button className="p-1.5 hover:bg-red-50 rounded text-gray-400 hover:text-red-500"><Trash2 size={12}/></button></div></td>
+                      <td className="px-4 py-3"><span className="text-[10px] bg-[#EEF2FF] text-[#5C5CFF] px-2 py-0.5 rounded font-medium">{d.level || "L1"}</span></td>
+                      <td className="px-4 py-3 text-xs text-gray-500">{d.parentDept || d.department || "All"}</td>
+                      <td className="px-4 py-3 text-xs font-semibold text-gray-800">
+                        {(realtimeCompanyEmps.length > 0 ? realtimeCompanyEmps : EMPLOYEES).filter(e => {
+                          const empDesig = String(e.designation || e.jobTitle || e.roleLabel || (e.role !== "admin" && e.role !== "employee" && e.role !== "hr_admin" ? e.role : "") || "").toLowerCase().trim();
+                          const targetDesig = String(d.name || "").toLowerCase().trim();
+                          if (!targetDesig || !empDesig) return false;
+                          return empDesig === targetDesig || empDesig.includes(targetDesig) || targetDesig.includes(empDesig);
+                        }).length}
+                      </td>
+                      <td className="px-4 py-3"><div className="flex gap-1"><button className="p-1.5 hover:bg-gray-100 rounded text-gray-400 hover:text-gray-600"><Edit size={12}/></button><button onClick={()=>handleDeleteDesignation(d)} className="p-1.5 hover:bg-red-50 rounded text-gray-400 hover:text-red-500" title="Delete Designation"><Trash2 size={12}/></button></div></td>
                     </tr>
                   ))}
                 </tbody>
@@ -932,15 +1056,15 @@ function OrgSetupSection() {
       )}
 
       {showAddDept&&(
-        <Modal title="Add Department" onClose={()=>setShowAddDept(false)}>
+        <Modal title={editingDept ? "Edit Department" : "Add Department"} onClose={()=>{ setShowAddDept(false); setEditingDept(null); }}>
           <div className="space-y-4">
             <InputField label="Department Name" value={newDeptName} onChange={(v: any) => setNewDeptName(String(v?.target?.value ?? v))} placeholder="e.g. Customer Success" required/>
             <SelectField label="Parent Department" value={newDeptParent} onChange={(v: any) => setNewDeptParent(String(v?.target?.value ?? v))} options={["None (Top-level)",...DEPT_DIST.map(d=>d.name)]}/>
-            <SelectField label="Department Head" value={newDeptHead} onChange={(v: any) => setNewDeptHead(String(v?.target?.value ?? v))} options={["Assign later", ...(realtimeCompanyEmps.length > 0 ? realtimeCompanyEmps.map(e=>e.name) : [])]}/>
+            <SelectField label="Department Head" value={newDeptHead} onChange={(v: any) => setNewDeptHead(String(v?.target?.value ?? v))} options={["Assign later", ...(realtimeCompanyEmps.length > 0 ? realtimeCompanyEmps.map(e=>e.name) : ["Sarah Mitchell", "Marcus Johnson", "Priya Sharma", "David Chen"])]}/>
             <InputField label="Cost Center" placeholder="e.g. ENG-005"/>
             <div className="flex justify-end gap-3 pt-2 border-t border-gray-200">
-              <Btn variant="outline" onClick={()=>setShowAddDept(false)}>Cancel</Btn>
-              <Btn onClick={handleAddDepartmentSubmit} disabled={!newDeptName.trim()}>Create Department</Btn>
+              <Btn variant="outline" onClick={()=>{ setShowAddDept(false); setEditingDept(null); }}>Cancel</Btn>
+              <Btn onClick={handleAddDepartmentSubmit} disabled={!newDeptName.trim()}>{editingDept ? "Save Changes" : "Create Department"}</Btn>
             </div>
           </div>
         </Modal>
@@ -958,6 +1082,20 @@ function OrgSetupSection() {
             <div className="flex justify-end gap-3 pt-2 border-t border-gray-200">
               <Btn variant="outline" onClick={()=>setShowAddLoc(false)}>Cancel</Btn>
               <Btn onClick={handleAddLocationSubmit} disabled={!newLocCity.trim()||!newLocAddr.trim()}>Add Location</Btn>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {showAddDesig&&(
+        <Modal title="Add Designation" onClose={()=>setShowAddDesig(false)}>
+          <div className="space-y-4">
+            <InputField label="Designation Name" value={newDesigName} onChange={(v: any) => setNewDesigName(String(v?.target?.value ?? v))} placeholder="e.g. Senior Software Engineer" required/>
+            <SelectField label="Level" value={newDesigLevel} onChange={(v: any) => setNewDesigLevel(String(v?.target?.value ?? v))} options={["L1 - Junior", "L2 - Mid Level", "L3 - Senior", "L4 - Lead", "L5 - Manager", "L6 - Director / Executive"]}/>
+            <SelectField label="Department" value={newDesigDept} onChange={(v: any) => setNewDesigDept(String(v?.target?.value ?? v))} options={["All", ...(departments.length > 0 ? departments.map(d=>d.name) : ["Engineering", "HR", "Product", "Sales", "Marketing", "Finance"])]}/>
+            <div className="flex justify-end gap-3 pt-2 border-t border-gray-200">
+              <Btn variant="outline" onClick={()=>setShowAddDesig(false)}>Cancel</Btn>
+              <Btn onClick={handleAddDesignationSubmit} disabled={!newDesigName.trim()}>Create Designation</Btn>
             </div>
           </div>
         </Modal>
@@ -1014,11 +1152,24 @@ function AccessControlSection() {
 
   const MATRIX_ROWS = [
     { key: "my-space", label: "Dashboard / My Space", action: "Access & View Dashboard" },
+    { key: "dashboard-approval", label: "", action: "View Approvals Tab (Dashboard)" },
+    { key: "dashboard-leave", label: "", action: "View Leave Tab (Dashboard)" },
+    
     { key: "team", label: "Team Workspace", action: "View Team Directory & Feed" },
+    { key: "create-announcement", label: "", action: "Create Announcements" },
+    { key: "team-approval", label: "", action: "View Approvals Tab (Team)" },
+    
     { key: "organization", label: "Organization Structure", action: "View & Manage Organization" },
+    
     { key: "attendance", label: "Attendance Tracking", action: "Check-in & View Attendance" },
+    { key: "approve-attendance", label: "", action: "Approve/Reject Attendance Requests" },
+    
     { key: "leave", label: "Leave Management", action: "Apply & Manage Leave" },
+    { key: "approve-leave", label: "", action: "Approve/Reject Leave Requests" },
+    
     { key: "tasks", label: "Task Allocation", action: "Assign & View Tasks" },
+    { key: "create-task", label: "", action: "Create Tasks" },
+    
     { key: "documents", label: "Document Hub", action: "Access & Upload Documents" },
     { key: "reports", label: "Analytics & Reports", action: "View & Export Reports" },
     { key: "approvals", label: "Approval Workflows", action: "Review & Approve Requests" },
@@ -1150,8 +1301,16 @@ function AccessControlSection() {
                     const rolesList: (keyof FeaturePermissions)[] = ["admin", "hr_admin", "manager", "employee"];
                     return (
                       <tr key={row.key} className="hover:bg-gray-50/80 transition-colors">
-                        <td className="px-4 py-3 text-xs font-semibold text-gray-800">{row.label}</td>
-                        <td className="px-3 py-3 text-xs text-gray-500">{row.action}</td>
+                        <td className="px-4 py-3 text-xs">
+                          {row.label ? (
+                            <span className="font-semibold text-gray-800">{row.label}</span>
+                          ) : (
+                            <div className="flex items-center gap-2 pl-4 text-gray-400">
+                              <div className="w-3 h-px bg-gray-300" />
+                            </div>
+                          )}
+                        </td>
+                        <td className={cn("px-3 py-3 text-xs", row.label ? "text-gray-600 font-medium" : "text-gray-500")}>{row.action}</td>
                         {rolesList.map((roleKey) => {
                           const isChecked = (matrix[roleKey] || []).includes(row.key);
                           return (
@@ -1624,8 +1783,8 @@ function AuditLogsSection() {
 }
 
 // ── MAIN MANAGE ACCOUNT PAGE ───────────────────────────────────────────────────
-export function ManageAccountPage({ onBack }: { onBack: () => void }) {
-  const [section, setSection] = useState<MASection>("Users");
+export function ManageAccountPage({ onBack, initialSection = "Users" }: { onBack: () => void; initialSection?: MASection }) {
+  const [section, setSection] = useState<MASection>(initialSection);
   const NAV: { id: MASection; icon: any; label: string }[] = [
     {id:"Users",icon:Users,label:"Users"},
     {id:"Organization Setup",icon:Building2,label:"Organization Setup"},

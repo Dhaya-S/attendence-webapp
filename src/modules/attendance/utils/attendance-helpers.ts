@@ -43,38 +43,47 @@ export const getAttendanceDetails = (emp: any) => {
     let displayStatus = "Checked Out";
     let dotColor = "bg-gray-300";
     let checkIn = "—";
+    let checkOut = "—";
     let workingHours = "—";
 
     if (statusLower === "present" || statusLower === "checked in" || statusLower === "working" || statusLower === "late") {
       displayStatus = statusLower === "late" ? "Late" : "Checked In";
       dotColor = statusLower === "late" ? "bg-amber-500" : "bg-green-500 animate-pulse";
       checkIn = emp.lastCheckIn || "—";
+      checkOut = emp.lastCheckOut || "—";
       workingHours = emp.lastCheckIn ? calculateWorkingHours(emp.lastCheckIn) : "—";
     } else if (statusLower === "wfh" || statusLower === "remote") {
       displayStatus = "WFH";
       dotColor = "bg-blue-500";
       checkIn = emp.lastCheckIn || "—";
+      checkOut = emp.lastCheckOut || "—";
       workingHours = emp.lastCheckIn ? calculateWorkingHours(emp.lastCheckIn) : "—";
     } else if (statusLower === "on leave" || statusLower === "leave") {
       displayStatus = "On Leave";
       dotColor = "bg-purple-500";
       checkIn = "—";
+      checkOut = "—";
       workingHours = "—";
     } else if (statusLower === "checked out" || statusLower === "offline") {
       displayStatus = "Checked Out";
       dotColor = "bg-gray-300";
       checkIn = emp.lastCheckIn || "—";
+      checkOut = emp.lastCheckOut || "—";
       workingHours = emp.lastCheckIn && emp.lastCheckOut ? calculateWorkingHours(emp.lastCheckIn, emp.lastCheckOut) : "—";
     }
 
     if (checkIn !== "—" && !checkIn.includes("AM") && !checkIn.includes("PM")) {
       checkIn = checkIn + " AM";
     }
+    if (checkOut !== "—" && !checkOut.includes("AM") && !checkOut.includes("PM")) {
+      checkOut = checkOut + " PM";
+    }
 
     return {
       status: displayStatus,
       dotColor,
       checkIn,
+      checkOut,
       workingHours,
     };
   }
@@ -109,6 +118,7 @@ export const getAttendanceDetails = (emp: any) => {
       status: displayStatus,
       dotColor,
       checkIn: record.checkIn !== "–" ? record.checkIn + " AM" : "–",
+      checkOut: record.checkOut !== "–" ? record.checkOut + " PM" : "–",
       workingHours:
         record.hours > 0
           ? `${Math.floor(record.hours)}h ${Math.round((record.hours % 1) * 60)}m`
@@ -127,6 +137,7 @@ export const getAttendanceDetails = (emp: any) => {
     status: displayStatus,
     dotColor,
     checkIn: "—",
+    checkOut: "—",
     workingHours: "—",
   };
 };

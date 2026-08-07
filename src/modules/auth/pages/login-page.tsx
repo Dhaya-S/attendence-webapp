@@ -3,7 +3,7 @@ import { Users, Clock, CheckCircle, RefreshCw, AlertCircle } from "lucide-react"
 import { InputField } from "@/shared/components";
 import { auth, db } from "@/shared/utils";
 import { signInWithEmailAndPassword, signInWithPopup, GoogleAuthProvider, createUserWithEmailAndPassword } from "firebase/auth";
-import { doc, setDoc } from "firebase/firestore";
+import { doc, setDoc, getDoc } from "firebase/firestore";
 
 export function LoginPage({ onLogin }: { onLogin: () => void }) {
   const [loading, setLoading] = useState(false);
@@ -20,6 +20,44 @@ export function LoginPage({ onLogin }: { onLogin: () => void }) {
       await signInWithEmailAndPassword(auth, email, password);
       onLogin();
     } catch (err: any) {
+      // Lazy creation flow for invited users with auto-generated passwords
+      try {
+        const emailLower = email.trim().toLowerCase();
+        const approvedDoc = await getDoc(doc(db, "approved_users", emailLower));
+        
+        if (approvedDoc.exists()) {
+          const approvedData = approvedDoc.data();
+          if (approvedData.tempPassword) {
+            if (approvedData.tempPassword === password.trim()) {
+              // Exact match! Register and log them in
+              const userCredential = await createUserWithEmailAndPassword(auth, emailLower, password.trim());
+              
+              await setDoc(doc(db, "approved_users", emailLower), {
+                tempPassword: null,
+                uid: userCredential.user.uid,
+                setupComplete: true
+              }, { merge: true });
+
+              // Ensure basic user doc exists for routing
+              await setDoc(doc(db, "user", emailLower), { uid: userCredential.user.uid, email: emailLower }, { merge: true });
+              await setDoc(doc(db, "users", userCredential.user.uid), { email: emailLower }, { merge: true });
+
+              onLogin();
+              return;
+            } else {
+              setError("Invalid auto-generated password. Please check your invitation details and ensure no trailing spaces were copied.");
+              return;
+            }
+          }
+        }
+      } catch (lazyErr: any) {
+        console.warn("Lazy creation check failed:", lazyErr);
+        if (lazyErr.code === "permission-denied") {
+           setError("Cannot verify invitation due to database rules. Admin needs to allow read access to approved_users for unauthenticated users.");
+           return;
+        }
+      }
+      
       setError(err.message || "Failed to sign in. Please check your credentials.");
     } finally {
       setLoading(false);

@@ -17,21 +17,18 @@ export function ReporteesTab({
   navigate,
 }: ReporteesTabProps) {
   const totalReportees = filtered.length;
-  let checkedInCount = 0;
-  let wfhCount = 0;
+  let presentCount = 0;
   let leaveCount = 0;
-  let checkedOutCount = 0;
+  let absentCount = 0;
 
   filtered.forEach((e) => {
     const details = getAttendanceDetails(e);
-    if (details.status === "Checked In" || details.status === "Late") {
-      checkedInCount++;
-    } else if (details.status === "WFH") {
-      wfhCount++;
-    } else if (details.status === "On Leave") {
+    if (details.status === "Checked In" || details.status === "Late" || details.status === "WFH") {
+      presentCount++;
+    } else if (details.status === "On Leave" || details.status === "Leave") {
       leaveCount++;
     } else {
-      checkedOutCount++;
+      absentCount++;
     }
   });
 
@@ -50,29 +47,23 @@ export function ReporteesTab({
           <div className="flex items-center gap-2">
             <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
             <span className="font-semibold text-gray-900 text-sm">
-              {checkedInCount}
+              {presentCount}
             </span>
-            <span>Checked In</span>
-          </div>
-          <div className="h-4 w-px bg-gray-200" />
-          <div className="flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full bg-blue-500" />
-            <span className="font-semibold text-gray-900 text-sm">{wfhCount}</span>
-            <span>WFH</span>
+            <span>Present</span>
           </div>
           <div className="h-4 w-px bg-gray-200" />
           <div className="flex items-center gap-2">
             <span className="w-2 h-2 rounded-full bg-purple-500" />
             <span className="font-semibold text-gray-900 text-sm">{leaveCount}</span>
-            <span>On Leave</span>
+            <span>Leave</span>
           </div>
           <div className="h-4 w-px bg-gray-200" />
           <div className="flex items-center gap-2">
             <span className="w-2 h-2 rounded-full bg-gray-300" />
             <span className="font-semibold text-gray-900 text-sm">
-              {checkedOutCount}
+              {absentCount}
             </span>
-            <span>Checked Out</span>
+            <span>Absent</span>
           </div>
         </div>
       </div>
@@ -92,6 +83,7 @@ export function ReporteesTab({
                       "Location",
                       "Attendance",
                       "Check-in",
+                      "Check-out",
                       "Working Hours",
                       "",
                     ].map((h) => (
@@ -107,6 +99,17 @@ export function ReporteesTab({
                 <tbody className="divide-y divide-gray-100 bg-white">
                   {filtered.map((e) => {
                     const att = getAttendanceDetails(e);
+                    
+                    let mappedStatus = "Absent";
+                    let mappedColor = "bg-gray-300";
+                    if (att.status === "Checked In" || att.status === "Late" || att.status === "WFH") {
+                      mappedStatus = "Present";
+                      mappedColor = "bg-green-500";
+                    } else if (att.status === "On Leave" || att.status === "Leave") {
+                      mappedStatus = "Leave";
+                      mappedColor = "bg-purple-500";
+                    }
+
                     return (
                       <tr
                         key={e.id}
@@ -140,16 +143,19 @@ export function ReporteesTab({
                             <div
                               className={cn(
                                 "w-1.5 h-1.5 rounded-full flex-shrink-0",
-                                  att.dotColor
+                                  mappedColor
                               )}
                             />
                             <span className="text-[11px] font-medium text-gray-600">
-                              {att.status}
+                              {mappedStatus}
                             </span>
                           </div>
                         </td>
                         <td className="px-5 py-3.5 font-mono text-xs text-gray-505">
                           {att.checkIn}
+                        </td>
+                        <td className="px-5 py-3.5 font-mono text-xs text-gray-505">
+                          {att.checkOut}
                         </td>
                         <td className="px-5 py-3.5 font-mono text-xs text-gray-505">
                           {att.workingHours}
@@ -174,51 +180,59 @@ export function ReporteesTab({
             </div>
           )
         ) : /* GRID VIEW */
-        filtered.length > 0 ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-            {filtered.map((e) => {
-              const att = getAttendanceDetails(e);
-              return (
-                <div
-                  key={e.id}
-                  onClick={() => navigate("employee-profile", e)}
-                  className="bg-white border border-gray-200 rounded-xl p-5 shadow-sm hover:border-[#5C5CFF]/30 hover:shadow-md transition-all cursor-pointer flex items-start gap-4 text-left group"
-                >
-                  <Avt
-                    initials={e.initials}
-                    color={e.color}
-                    size="lg"
-                    className="flex-shrink-0"
-                  />
-                  <div className="min-w-0 flex-1">
-                    <h4 className="text-sm font-bold text-gray-808 group-hover:text-[#5C5CFF] transition-colors truncate">
-                      {e.name}
-                    </h4>
-                    <p className="text-xs text-gray-500 truncate mt-0.5">
-                      {e.designation}
-                    </p>
-                    <p className="text-[11px] text-gray-400 truncate mt-0.5">
-                      {e.dept} · {e.branch}
-                    </p>
-                    <div className="flex items-center gap-1.5 mt-3">
-                      <div className={cn("w-2 h-2 rounded-full", att.dotColor)} />
-                      <span className="text-xs font-semibold text-gray-600">
-                        {att.status}{" "}
-                        {att.status !== "Checked Out" &&
-                          att.status !== "On Leave" &&
-                          `(${att.checkIn})`}
-                      </span>
+          filtered.length > 0 ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+              {filtered.map((e) => {
+                const att = getAttendanceDetails(e);
+                
+                let mappedStatus = "Absent";
+                let mappedColor = "bg-gray-300";
+                if (att.status === "Checked In" || att.status === "Late" || att.status === "WFH") {
+                  mappedStatus = "Present";
+                  mappedColor = "bg-green-500";
+                } else if (att.status === "On Leave" || att.status === "Leave") {
+                  mappedStatus = "Leave";
+                  mappedColor = "bg-purple-500";
+                }
+
+                return (
+                  <div
+                    key={e.id}
+                    onClick={() => navigate("employee-profile", e)}
+                    className="bg-white border border-gray-200 rounded-xl p-5 shadow-sm hover:border-[#5C5CFF]/30 hover:shadow-md transition-all cursor-pointer flex items-start gap-4 text-left group"
+                  >
+                    <Avt
+                      initials={e.initials}
+                      color={e.color}
+                      size="lg"
+                      className="flex-shrink-0"
+                    />
+                    <div className="min-w-0 flex-1">
+                      <h4 className="text-sm font-bold text-gray-808 group-hover:text-[#5C5CFF] transition-colors truncate">
+                        {e.name}
+                      </h4>
+                      <p className="text-xs text-gray-500 truncate mt-0.5">
+                        {e.designation}
+                      </p>
+                      <p className="text-[11px] text-gray-400 truncate mt-0.5">
+                        {e.dept} · {e.branch}
+                      </p>
+                      <div className="flex items-center gap-1.5 mt-3">
+                        <div className={cn("w-2 h-2 rounded-full", mappedColor)} />
+                        <span className="text-xs font-semibold text-gray-600">
+                          {mappedStatus}
+                        </span>
+                      </div>
                     </div>
                   </div>
-                </div>
-              );
-            })}
-          </div>
-        ) : (
-          <div className="bg-white rounded-xl border border-gray-200 p-12 text-center text-gray-400 text-sm shadow-sm">
-            No matching reportees found
-          </div>
-        )}
+                );
+              })}
+            </div>
+          ) : (
+            <div className="bg-white rounded-xl border border-gray-200 p-12 text-center text-gray-400 text-sm shadow-sm">
+              No matching reportees found
+            </div>
+          )}
       </div>
     </div>
   );

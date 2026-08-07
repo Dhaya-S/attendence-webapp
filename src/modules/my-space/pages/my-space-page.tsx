@@ -20,7 +20,8 @@ import {
   PieChart, Pie, Legend
 } from "recharts";
 import { AppPage } from "@/shared/types";
-import { cn, fmtDate } from "@/shared/utils";
+import { cn, fmtDate, getDistance } from "@/shared/utils";
+import { GoogleMap, useJsApiLoader, Marker, Circle } from "@react-google-maps/api";
 import { EMP_COLORS } from "@/shared/constants/colors";
 import { LEAVE_REQUESTS } from "@/modules/leave/data/leave-requests";
 import { Avt, StatusBadge, Btn, Modal, SelectField, InputField, Drawer } from "@/shared/components";
@@ -261,57 +262,48 @@ const MY_LEAVE_RICH = [
   {id:"L4",type:"Casual Leave",from:"Jan 2",  to:"Jan 2",  days:1,status:"Rejected", applied:"Dec 29",approver:"David Chen",   reason:"Personal work appointment.",               attachment:false,comment:"",               rejectReason:"Insufficient leave balance for this period. Please reapply after Jan 15."},
 ];
 
-const MapSVG = ({ isInside }: { isInside: boolean }) => {
-  const userPinX = isInside ? 165 : 240;
-  const userPinY = isInside ? 115 : 60;
+const GeoMap = ({ userLat, userLng, orgLat, orgLng, radius, isInside, orgName }: { userLat: number, userLng: number, orgLat: number, orgLng: number, radius: number, isInside: boolean, orgName?: string }) => {
+  const { isLoaded } = useJsApiLoader({
+    id: 'google-map-script',
+    googleMapsApiKey: import.meta.env.VITE_GOOGLE_MAPS_API_KEY || ""
+  });
+
+  const center = { lat: orgLat || 40.7485, lng: orgLng || -73.9856 };
+  const userPos = { lat: userLat || 40.7485, lng: userLng || -73.9856 };
+
+  const onLoad = React.useCallback(function callback(map: any) {
+    if (userLat && userLng && orgLat && orgLng) {
+      const bounds = new window.google.maps.LatLngBounds();
+      bounds.extend(center);
+      bounds.extend(userPos);
+      map.fitBounds(bounds, { padding: 40 });
+    }
+  }, [center, userPos]);
+
+  if (!isLoaded) return <div className="w-full h-full bg-slate-50 flex items-center justify-center text-xs text-gray-500 rounded-xl border border-gray-200 shadow-inner">Loading Map...</div>;
 
   return (
-    <svg className="w-full h-full border border-gray-200 rounded-xl bg-slate-50 shadow-inner" viewBox="0 0 300 200">
-      <defs>
-        <pattern id="grid" width="20" height="20" patternUnits="userSpaceOnUse">
-          <path d="M 20 0 L 0 0 0 20" fill="none" stroke="#f1f5f9" strokeWidth="1"/>
-        </pattern>
-      </defs>
-      
-      <rect width="300" height="200" fill="url(#grid)" />
-      
-      {/* Buildings / Blocks */}
-      <rect x="20" y="30" width="80" height="40" rx="4" fill="#e2e8f0" />
-      <rect x="120" y="20" width="160" height="30" rx="4" fill="#e2e8f0" />
-      <rect x="15" y="120" width="100" height="60" rx="4" fill="#e2e8f0" />
-      <rect x="140" y="130" width="140" height="50" rx="4" fill="#e2e8f0" />
-      
-      {/* Geofence Ring */}
-      <circle 
-        cx="140" 
-        cy="100" 
-        r="55" 
-        fill="#5C5CFF" 
-        fillOpacity="0.06" 
-        stroke="#5C5CFF" 
-        strokeWidth="1.5" 
-        strokeDasharray="4 3" 
+    <GoogleMap
+      mapContainerStyle={{ width: '100%', height: '100%', borderRadius: '0.75rem' }}
+      center={center}
+      zoom={16}
+      onLoad={onLoad}
+      options={{ disableDefaultUI: true, gestureHandling: 'cooperative' }}
+    >
+      <Circle
+        center={center}
+        radius={radius || 200}
+        options={{
+          fillColor: '#5C5CFF',
+          fillOpacity: 0.1,
+          strokeColor: '#5C5CFF',
+          strokeOpacity: 0.8,
+          strokeWeight: 2,
+        }}
       />
-      <text x="140" y="148" textAnchor="middle" className="text-[9px] font-bold fill-[#5C5CFF]">200m Geo-fence</text>
-      
-      {/* Office pin */}
-      <circle cx="140" cy="100" r="4" fill="#5C5CFF" />
-      <circle cx="140" cy="100" r="10" fill="none" stroke="#5C5CFF" strokeWidth="1" opacity="0.3" />
-      <g transform="translate(132, 76)">
-        <path d="M8 0C3.58 0 0 3.58 0 8c0 5.25 8 12 8 12s8-6.75 8-12c0-4.42-3.58-8-8-8zm0 11c-1.66 0-3-1.34-3-3s1.34-3 3-3 3 1.34 3 3-1.34 3-3 3z" fill="#5C5CFF" />
-      </g>
-      <text x="140" y="70" textAnchor="middle" className="text-[9px] font-bold fill-gray-800">New York HQ</text>
-      
-      {/* User Pin */}
-      <g transform={`translate(${userPinX - 8}, ${userPinY - 20})`}>
-        <path 
-          d="M8 0C3.58 0 0 3.58 0 8c0 5.25 8 12 8 12s8-6.75 8-12c0-4.42-3.58-8-8-8zm0 11c-1.66 0-3-1.34-3-3s1.34-3 3-3 3 1.34 3 3-1.34 3-3 3z" 
-          fill={isInside ? "#22C55E" : "#EF4444"} 
-        />
-        <circle cx="8" cy="8" r="12" fill="none" stroke={isInside ? "#22C55E" : "#EF4444"} strokeWidth="1.5" className="animate-ping" opacity="0.4" />
-      </g>
-      <text x={userPinX} y={userPinY + 8} textAnchor="middle" className="text-[8px] font-bold fill-gray-600">Your Location</text>
-    </svg>
+      <Marker position={center} title={orgName || "Office HQ"} icon={{ url: "http://maps.google.com/mapfiles/ms/icons/blue-dot.png" }} />
+      <Marker position={userPos} title="Your Location" icon={{ url: isInside ? "http://maps.google.com/mapfiles/ms/icons/green-dot.png" : "http://maps.google.com/mapfiles/ms/icons/red-dot.png" }} />
+    </GoogleMap>
   );
 };
 
@@ -382,6 +374,7 @@ export function MySpacePage({
   const [issueRejectNote, setIssueRejectNote] = useState("");
 
   const [orgLeavePolicy, setOrgLeavePolicy] = useState<{ annualLeave?: string; sickLeave?: string; casualLeave?: string } | null>(null);
+  const [orgData, setOrgData] = useState<any>(null);
 
   // Real-Time Leave Request States & Form Inputs
   const [dbLeaveRequests, setDbLeaveRequests] = useState<any[]>([]);
@@ -399,6 +392,7 @@ export function MySpacePage({
     const unsub = onSnapshot(orgRef, (snap) => {
       if (snap.exists()) {
         const d = snap.data();
+        setOrgData((prev: any) => ({ ...prev, ...d, userOverride: prev?.userOverride }));
         if (d.leavePolicy) {
           setOrgLeavePolicy(d.leavePolicy);
         }
@@ -406,8 +400,31 @@ export function MySpacePage({
     }, (err) => {
       console.warn("Error listening to organization leave policy:", err);
     });
-    return () => unsub();
-  }, [targetCompanyId]);
+
+    let userUnsub = () => {};
+    if (userEmail) {
+      const userRef = doc(db, "organizations", targetCompanyId, "users", userEmail);
+      userUnsub = onSnapshot(userRef, (snap) => {
+         if (snap.exists()) {
+             const ud = snap.data();
+             if (ud.latitude || ud.lat || ud.longitude || ud.lng) {
+                setOrgData((prev: any) => ({
+                    ...prev,
+                    latitude: ud.latitude || ud.lat || prev?.latitude,
+                    longitude: ud.longitude || ud.lng || prev?.longitude,
+                    name: ud.officeName || ud.branch || ud.name || prev?.name,
+                    userOverride: true
+                }));
+             }
+         }
+      });
+    }
+
+    return () => {
+      unsub();
+      userUnsub();
+    };
+  }, [targetCompanyId, userEmail]);
 
   // Real-Time Firestore Listener on /organizations/{companyId}/leave_requests
   useEffect(() => {
@@ -1066,44 +1083,102 @@ export function MySpacePage({
   // Handle Check In Action -> Writes to /organizations/{companyId}/users/{userEmail}/attendance/{dateStr}
   const handleCheckIn = async () => {
     if (!userEmail) return;
-    const now = new Date();
-    const dateKey = now.toISOString().split("T")[0];
-    const timeStr = now.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: true });
-    const isLate = now.getHours() >= 9 && now.getMinutes() > 15;
-
-    const record = {
-      date: dateKey,
-      checkInTime: timeStr,
-      checkInTimestamp: now.toISOString(),
-      checkOutTime: null,
-      checkOutTimestamp: null,
-      status: isLate ? "Late" : "Present",
-      hoursWorked: "0h 00m",
-      hoursNum: 0,
-      shift: "General Shift",
-      location: "Office / Geo-fence",
-      updatedAt: now.toISOString(),
-    };
-
-    try {
-      const orgAttRef = doc(db, "organizations", targetCompanyId, "users", userEmail, "attendance", dateKey);
-      await setDoc(orgAttRef, record, { merge: true });
-
-      const globalAttRef = doc(db, "users", userEmail, "attendance", dateKey);
-      await setDoc(globalAttRef, record, { merge: true });
-
-      await setDoc(doc(db, "organizations", targetCompanyId, "users", userEmail), {
-        attendanceStatus: isLate ? "Late" : "Present",
-        lastCheckIn: timeStr,
-      }, { merge: true });
-
-      setCheckedIn(true);
-      setCheckInTime(timeStr);
-      setCheckOutTime("—");
-      setWorkingTimeStr("0h 00m");
-    } catch (err) {
-      console.error("Check-in error:", err);
+    if (!navigator.geolocation) {
+      alert("Geolocation is not supported by your browser");
+      return;
     }
+
+    setIsCheckingIn(true);
+    navigator.geolocation.getCurrentPosition(async (position) => {
+      const { latitude, longitude } = position.coords;
+
+      try {
+        let orgLat = 40.7485;
+        let orgLng = -73.9856;
+        let orgRadius = 200;
+        let orgName = "New York HQ";
+
+        if (targetCompanyId && targetCompanyId !== "default") {
+          const orgDoc = await getDoc(doc(db, "organizations", targetCompanyId));
+          const orgData = orgDoc.data();
+          if (orgData) {
+            orgLat = parseFloat(orgData.latitude || orgData.location?.latitude || orgData.lat || orgLat.toString());
+            orgLng = parseFloat(orgData.longitude || orgData.location?.longitude || orgData.lng || orgLng.toString());
+            orgRadius = parseFloat(orgData.geofenceRadius || orgData.radius || "200");
+            orgName = orgData.name || orgData.companyName || orgName;
+          }
+
+          const userDoc = await getDoc(doc(db, "organizations", targetCompanyId, "users", userEmail));
+          if (userDoc.exists()) {
+            const userData = userDoc.data();
+            if (userData.latitude || userData.lat) {
+               orgLat = parseFloat(userData.latitude || userData.lat || orgLat.toString());
+               orgLng = parseFloat(userData.longitude || userData.lng || orgLng.toString());
+               orgName = userData.officeName || userData.branch || userData.name || orgName;
+               if (userData.geofenceRadius || userData.radius) {
+                 orgRadius = parseFloat(userData.geofenceRadius || userData.radius || orgRadius.toString());
+               }
+            }
+          }
+        }
+
+        const dist = getDistance(latitude, longitude, orgLat, orgLng);
+        const isOutside = dist > orgRadius;
+
+        const now = new Date();
+        const dateKey = now.toISOString().split("T")[0];
+        const timeStr = now.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: true });
+        const isLate = now.getHours() >= 9 && now.getMinutes() > 15;
+
+        const attStatus = isOutside ? "WFH" : (isLate ? "Late" : "Present");
+        const locationStr = isOutside ? "Work from Home" : "Work in Office";
+
+        const record = {
+          date: dateKey,
+          checkInTime: timeStr,
+          checkInTimestamp: now.toISOString(),
+          checkOutTime: null,
+          checkOutTimestamp: null,
+          status: attStatus,
+          hoursWorked: "0h 00m",
+          hoursNum: 0,
+          shift: "General Shift",
+          location: locationStr,
+          coordinates: { lat: latitude, lng: longitude },
+          orgCoordinates: { lat: orgLat, lng: orgLng },
+          orgRadius,
+          orgName,
+          updatedAt: now.toISOString(),
+        };
+
+        const orgAttRef = doc(db, "organizations", targetCompanyId, "users", userEmail, "attendance", dateKey);
+        await setDoc(orgAttRef, record, { merge: true });
+
+        const globalAttRef = doc(db, "users", userEmail, "attendance", dateKey);
+        await setDoc(globalAttRef, record, { merge: true });
+
+        await setDoc(doc(db, "organizations", targetCompanyId, "users", userEmail), {
+          attendanceStatus: attStatus,
+          lastCheckIn: timeStr,
+        }, { merge: true });
+
+        setCheckedIn(true);
+        setCheckInTime(timeStr);
+        setCheckOutTime("—");
+        setWorkingTimeStr("0h 00m");
+      } catch (err) {
+        console.error("Check-in error:", err);
+      } finally {
+        setIsCheckingIn(false);
+      }
+    }, (error) => {
+      console.error("Geolocation error:", error);
+      alert("Please allow location access to check in.");
+      setIsCheckingIn(false);
+    }, {
+      enableHighAccuracy: true,
+      timeout: 10000,
+    });
   };
 
   // Handle Check Out Action -> Writes to /organizations/{companyId}/users/{userEmail}/attendance/{dateStr}
@@ -1223,6 +1298,7 @@ export function MySpacePage({
   // Shared
   const [showLocationModal, setShowLocationModal] = useState(false);
   const [isInsideGeofence, setIsInsideGeofence] = useState(true);
+  const [isCheckingIn, setIsCheckingIn] = useState(false);
   const [reqs, setReqs] = useState(LEAVE_REQUESTS);
 
   // Leave modals
@@ -1728,15 +1804,21 @@ export function MySpacePage({
               </div>
               <div className="px-4 py-2.5 flex items-center gap-4">
                 <div className="flex items-center gap-2">
-                  <div className={cn("w-2 h-2 rounded-full flex-shrink-0", checkedIn ? "bg-green-400 shadow-[0_0_0_3px_rgba(34,197,94,0.15)] animate-pulse" : "bg-gray-300")} />
+                  <div className={cn("w-2 h-2 rounded-full flex-shrink-0", checkedIn ? "bg-green-400 shadow-[0_0_0_3px_rgba(34,197,94,0.15)] animate-pulse" : checkOutTime !== "—" ? "bg-green-500" : "bg-gray-300")} />
                   <div>
-                    <div className="text-xs font-semibold text-gray-900">{checkedIn ? "Working · General Shift" : "Not Checked In"}</div>
+                    <div className="text-xs font-semibold text-gray-900">{checkedIn ? "Working · General Shift" : checkOutTime !== "—" ? "Completed · General Shift" : "Not Checked In"}</div>
                     <div className="text-[10px] text-gray-400">Mon–Fri · 09:00 – 18:00</div>
                   </div>
                 </div>
-                {checkedIn && <>
+                {(checkedIn || checkOutTime !== "—") && <>
                   <div className="h-8 w-px bg-gray-100" />
                   <div className="text-xs"><span className="text-gray-400">Check-in</span><div className="font-mono font-semibold text-gray-800 mt-0.5">{checkInTime}</div></div>
+                  {checkOutTime !== "—" && (
+                    <>
+                      <div className="h-8 w-px bg-gray-100" />
+                      <div className="text-xs"><span className="text-gray-400">Check-out</span><div className="font-mono font-semibold text-gray-800 mt-0.5">{checkOutTime}</div></div>
+                    </>
+                  )}
                   <div className="h-8 w-px bg-gray-100" />
                   <div className="text-xs"><span className="text-gray-400">Working</span><div className="font-mono font-semibold text-[#5C5CFF] mt-0.5">{workingTimeStr}</div></div>
                   <div className="h-8 w-px bg-gray-100" />
@@ -1746,18 +1828,21 @@ export function MySpacePage({
                     <span className="text-gray-400">Location</span>
                     <div className="font-semibold text-gray-800 mt-0.5 flex items-center gap-0.5">
                       <MapPin size={12} className="text-red-500 fill-red-100" />
-                      Office / Geo-fence
+                      {todayAtt?.location || orgData?.name || orgData?.companyName || "Office HQ"}
                     </div>
-                    <div className={cn("text-[9px] font-semibold leading-tight", isInsideGeofence ? "text-green-600" : "text-red-500")}>
-                      {isInsideGeofence ? "Inside geo-fence" : "Outside geo-fence"}
+                  <div className={cn("text-[9px] font-semibold leading-tight", todayAtt?.location === "Work from Home" ? "text-amber-500" : "text-green-600")}>
+                      {todayAtt?.location === "Work from Home" ? "Remote (WFH)" : "Inside geo-fence"}
                     </div>
                   </div>
                 </>}
                 <div className="ml-auto flex items-center gap-2">
-                  {!checkedIn
-                    ? <button onClick={handleCheckIn}  className="inline-flex items-center gap-1.5 px-4 py-1.5 bg-[#5C5CFF] text-white text-xs font-semibold rounded-lg hover:bg-[#4A4AE0] transition-colors"><UserCheck size={13} />Check In</button>
-                    : <button onClick={handleCheckOut} className="inline-flex items-center gap-1.5 px-4 py-1.5 bg-red-50 text-red-600 border border-red-200 text-xs font-semibold rounded-lg hover:bg-red-100 transition-colors"><UserX size={13} />Check Out</button>
-                  }
+                  {checkedIn ? (
+                    <button onClick={handleCheckOut} className="inline-flex items-center gap-1.5 px-4 py-1.5 bg-red-50 text-red-600 border border-red-200 text-xs font-semibold rounded-lg hover:bg-red-100 transition-colors"><UserX size={13} />Check Out</button>
+                  ) : checkOutTime !== "—" ? (
+                    <div className="px-4 py-1.5 bg-green-50 text-green-700 border border-green-200 text-xs font-semibold rounded-lg flex items-center gap-1.5"><CheckCircle size={13} />Day work complete</div>
+                  ) : (
+                    <button onClick={handleCheckIn} disabled={isCheckingIn} className="inline-flex items-center gap-1.5 px-4 py-1.5 bg-[#5C5CFF] text-white text-xs font-semibold rounded-lg hover:bg-[#4A4AE0] transition-colors disabled:opacity-50">{isCheckingIn ? <RefreshCw size={13} className="animate-spin" /> : <UserCheck size={13} />}Check In</button>
+                  )}
                 </div>
               </div>
             </div>
@@ -3368,12 +3453,6 @@ export function MySpacePage({
                           <td className="px-5 py-3 text-xs text-gray-600">{r.approver || "Manager"}</td>
                           <td className="px-5 py-3"><StatusBadge status={r.status}/></td>
                           <td className="px-5 py-3">
-                            {r.status==="Pending"&&(
-                              <div className="flex gap-1">
-                                <button onClick={e=>{e.stopPropagation();confirmLeaveApprove(r.id);}} className="px-2 py-1 bg-green-50 border border-green-200 text-green-700 text-[9px] font-medium rounded hover:bg-green-100">Approve</button>
-                                <button onClick={e=>{e.stopPropagation();setLeaveRejectModalId(r.id);}} className="px-2 py-1 bg-red-50 border border-red-200 text-red-700 text-[9px] font-medium rounded hover:bg-red-100">Reject</button>
-                              </div>
-                            )}
                           </td>
                         </tr>
                       ))}
@@ -3512,12 +3591,6 @@ export function MySpacePage({
                           </div>
                         )}
                       </div>
-                      {r.status==="Pending"&&(
-                        <div className="flex gap-1 flex-shrink-0" onClick={e=>e.stopPropagation()}>
-                          <button onClick={()=>confirmLeaveApprove(r.id)} className="px-2.5 py-1.5 bg-green-50 border border-green-200 text-green-700 text-[10px] font-medium rounded-lg hover:bg-green-100">Approve</button>
-                          <button onClick={()=>setLeaveRejectModalId(r.id)} className="px-2.5 py-1.5 bg-red-50 border border-red-200 text-red-700 text-[10px] font-medium rounded-lg hover:bg-red-100">Reject</button>
-                        </div>
-                      )}
                     </div>
                   ))}
                   <button onClick={()=>setShowApplyLeave(true)} className="w-full py-3 border-2 border-dashed border-gray-200 rounded-xl text-sm text-[#5C5CFF] hover:border-[#5C5CFF]/40 flex items-center justify-center gap-2 font-medium"><Plus size={14}/>Apply for Leave</button>
@@ -3668,12 +3741,6 @@ export function MySpacePage({
                             <p className="text-[10px] text-gray-400">{r.from} → {r.to} · {r.days} days · Applicant: {r.applicantName || r.applicantEmail}</p>
                           </div>
                           <StatusBadge status={r.status}/>
-                          {r.status==="Pending"&&(
-                            <div className="flex gap-1" onClick={e=>e.stopPropagation()}>
-                              <button onClick={()=>confirmLeaveApprove(r.id)} className="px-2 py-1 bg-green-50 border border-green-200 text-green-700 text-[9px] font-medium rounded hover:bg-green-100">Approve</button>
-                              <button onClick={()=>setLeaveRejectModalId(r.id)} className="px-2 py-1 bg-red-50 border border-red-200 text-red-700 text-[9px] font-medium rounded hover:bg-red-100">Reject</button>
-                            </div>
-                          )}
                         </div>
                       ))
                     )}
@@ -4369,9 +4436,9 @@ export function MySpacePage({
                 <p className="text-[10px] text-gray-400 uppercase tracking-wide font-bold">Workplace Location</p>
                 <p className="text-base font-semibold text-gray-800 flex items-center gap-1.5 mt-0.5">
                   <MapPin size={16} className="text-red-500 fill-red-100" />
-                  New York HQ
+                  {todayAtt?.orgName || orgData?.name || orgData?.companyName || "Office HQ"}
                 </p>
-                <p className="text-xs text-gray-500 mt-0.5">350 Fifth Avenue, New York, NY 10118</p>
+                <p className="text-xs text-gray-500 mt-0.5">Primary Office Coordinates</p>
               </div>
 
               <div className="h-px bg-gray-100" />
@@ -4379,11 +4446,11 @@ export function MySpacePage({
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <p className="text-[10px] text-gray-400 uppercase tracking-wide font-bold">Geo-fence Radius</p>
-                  <p className="text-sm font-semibold text-gray-800 mt-0.5">200 meters</p>
+                  <p className="text-sm font-semibold text-gray-800 mt-0.5">{todayAtt?.orgRadius || 200} meters</p>
                 </div>
                 <div>
                   <p className="text-[10px] text-gray-400 uppercase tracking-wide font-bold">Check-in Time</p>
-                  <p className="text-sm font-semibold text-gray-800 mt-0.5">09:02 AM</p>
+                  <p className="text-sm font-semibold text-gray-800 mt-0.5">{todayAtt?.checkInTime || "N/A"}</p>
                 </div>
               </div>
 
@@ -4392,46 +4459,55 @@ export function MySpacePage({
               <div>
                 <p className="text-[10px] text-gray-400 uppercase tracking-wide font-bold">Check-in Coordinates</p>
                 <p className="text-xs font-mono font-medium text-gray-700 mt-0.5">
-                  {isInsideGeofence ? "40.7485° N, -73.9856° W" : "40.7512° N, -73.9821° W"}
+                  {todayAtt?.coordinates ? `${todayAtt.coordinates.lat.toFixed(4)}° N, ${todayAtt.coordinates.lng.toFixed(4)}° W` : "Location not available"}
                 </p>
                 <p className="text-[10px] text-gray-400 mt-0.5">
-                  {isInsideGeofence ? "Offset: 45 meters from office center" : "Offset: 380 meters from office center"}
+                  {todayAtt?.coordinates && todayAtt?.orgCoordinates ? `Offset: ${Math.round(getDistance(todayAtt.coordinates.lat, todayAtt.coordinates.lng, todayAtt.orgCoordinates.lat, todayAtt.orgCoordinates.lng))} meters from office center` : ""}
                 </p>
               </div>
 
               <div className="h-px bg-gray-100" />
 
-              <div>
-                <p className="text-[10px] text-gray-400 uppercase tracking-wide font-bold mb-1">Geo-fence Validation Status</p>
-                <div className="flex items-center gap-2">
-                  <span className={cn(
-                    "inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold",
-                    isInsideGeofence ? "bg-green-50 text-green-700 border border-green-200" : "bg-red-50 text-red-700 border border-red-200"
-                  )}>
-                    <div className={cn("w-1.5 h-1.5 rounded-full", isInsideGeofence ? "bg-green-500" : "bg-red-500")} />
-                    {isInsideGeofence ? "Inside boundary" : "Outside boundary (Violation)"}
-                  </span>
-                </div>
-              </div>
-
-              <div className="pt-2">
-                <button
-                  onClick={() => setIsInsideGeofence(!isInsideGeofence)}
-                  className="w-full py-2 bg-gray-50 border border-gray-200 hover:bg-gray-100 text-gray-700 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors"
-                >
-                  <RefreshCw size={12} />
-                  Simulate {isInsideGeofence ? "Outside" : "Inside"} Geo-fence
-                </button>
-              </div>
+              {(() => {
+                const isOutside = todayAtt?.coordinates && todayAtt?.orgCoordinates ? getDistance(todayAtt.coordinates.lat, todayAtt.coordinates.lng, todayAtt.orgCoordinates.lat, todayAtt.orgCoordinates.lng) > (todayAtt.orgRadius || 200) : false;
+                return (
+                  <div>
+                    <p className="text-[10px] text-gray-400 uppercase tracking-wide font-bold mb-1">Geo-fence Validation Status</p>
+                    <div className="flex items-center gap-2">
+                      <span className={cn(
+                        "inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold",
+                        isOutside ? "bg-amber-50 text-amber-700 border border-amber-200" : "bg-green-50 text-green-700 border border-green-200"
+                      )}>
+                        <div className={cn("w-1.5 h-1.5 rounded-full", isOutside ? "bg-amber-500" : "bg-green-500")} />
+                        {isOutside ? "Outside boundary (WFH)" : "Inside boundary (Verified)"}
+                      </span>
+                    </div>
+                  </div>
+                );
+              })()}
             </div>
 
-            {/* Right side Map SVG */}
+            {/* Right side Map */}
             <div className="col-span-3 flex flex-col justify-between">
               <div className="w-full aspect-[4/3] relative">
-                <MapSVG isInside={isInsideGeofence} />
+                {todayAtt?.coordinates && todayAtt?.orgCoordinates ? (
+                  <GeoMap 
+                    userLat={todayAtt.coordinates.lat} 
+                    userLng={todayAtt.coordinates.lng} 
+                    orgLat={todayAtt.orgCoordinates.lat} 
+                    orgLng={todayAtt.orgCoordinates.lng} 
+                    radius={todayAtt.orgRadius}
+                    orgName={todayAtt.orgName}
+                    isInside={true}
+                  />
+                ) : (
+                  <div className="w-full h-full bg-slate-50 flex items-center justify-center text-xs text-gray-500 rounded-xl border border-gray-200 shadow-inner">
+                    <p>No location data available for this check-in.</p>
+                  </div>
+                )}
               </div>
               <div className="text-[10px] text-gray-400 text-center mt-2">
-                Simulated real-time GPS & biometric geofencing verification.
+                Real-time GPS geofencing verification via Google Maps.
               </div>
             </div>
 

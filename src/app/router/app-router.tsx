@@ -53,6 +53,7 @@ interface AppRouterProps {
   profileOrigin: string | null;
   documentsTab: string;
   settingsTab: string;
+  manageAccountSection?: any;
 }
 
 export function AppRouter({
@@ -95,6 +96,7 @@ export function AppRouter({
   profileOrigin,
   documentsTab,
   settingsTab,
+  manageAccountSection,
 }: AppRouterProps) {
   const { role } = useAuth();
 
@@ -221,7 +223,7 @@ export function AppRouter({
     case "notifications":
       return <NotificationCenterPage navigate={navigate} />;
     case "manage-account":
-      return <ManageAccountPage onBack={() => navigate("settings")} />;
+      return <ManageAccountPage onBack={() => navigate("settings")} initialSection={manageAccountSection} />;
     default:
       return <MySpacePage navigate={navigate} activeTab={mySpaceTab} />;
   }

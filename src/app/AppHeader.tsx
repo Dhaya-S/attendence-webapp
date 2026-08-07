@@ -6,6 +6,9 @@ import {
 } from "lucide-react";
 import { cn, EMPLOYEES, DEPT_DIST, DOCUMENTS_LIST } from "./data";
 import { Avt } from "./ui";
+import { useAuth } from "@/shared/context/AuthContext";
+import { db } from "@/shared/utils/firebase";
+import { doc, onSnapshot } from "firebase/firestore";
 
 // Reusable Segmented Control Component
 export function SegmentedControl<T extends string>({
@@ -152,6 +155,9 @@ export function AppHeader({
   onLogout?: () => void;
   unreadNotifications?: number;
 }) {
+  const { email, companyId } = useAuth();
+  const [profileData, setProfileData] = useState<any>(null);
+
   const [profileOpen, setProfileOpen] = useState(false);
   const [quickCreateOpen, setQuickCreateOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
@@ -161,6 +167,23 @@ export function AppHeader({
   const searchInputRef = useRef<HTMLInputElement>(null);
   const quickCreateRef = useRef<HTMLDivElement>(null);
   const quickCreateBtnRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    if (!email || !companyId) return;
+    const userRef = doc(db, "organizations", companyId, "users", email);
+    const unsub = onSnapshot(userRef, (snap) => {
+      if (snap.exists()) {
+        setProfileData(snap.data());
+      }
+    });
+    return () => unsub();
+  }, [email, companyId]);
+
+  const firstName = profileData?.firstName || profileData?.name?.split(" ")[0] || "User";
+  const lastName = profileData?.lastName || profileData?.name?.split(" ").slice(1).join(" ") || "";
+  const fullName = profileData?.name || `${firstName} ${lastName}`.trim() || "User Name";
+  const initials = firstName[0] + (lastName[0] || "");
+  const role = profileData?.designation || profileData?.role || "Employee";
 
   // Focus search input when open
   useEffect(() => {
@@ -535,11 +558,11 @@ export function AppHeader({
               className="flex items-center gap-2.5 hover:opacity-90 transition-opacity"
             >
               <div className="w-9 h-9 rounded-full bg-[#5B57E8] text-white text-[13px] font-semibold flex items-center justify-center">
-                AA
+                {initials}
               </div>
               <div className="text-left line-height-[1.3] hidden md:block">
-                <div className="text-[13px] font-semibold text-[#16181D]">Alex Admin</div>
-                <div className="text-[12px] text-[#9CA0AB]">Administrator</div>
+                <div className="text-[13px] font-semibold text-[#16181D]">{fullName}</div>
+                <div className="text-[12px] text-[#9CA0AB]">{role}</div>
               </div>
               <ChevronDown size={14} className="text-[#9CA0AB]" />
             </button>
@@ -548,10 +571,10 @@ export function AppHeader({
               <div className="absolute right-0 top-full mt-2 w-60 bg-white rounded-xl border border-gray-200 shadow-xl z-50 overflow-hidden" onClick={() => setProfileOpen(false)}>
                 <div className="px-4 py-3 bg-gradient-to-br from-[#EEF2FF] to-white border-b border-gray-100">
                   <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-full bg-[#5B57E8] text-white text-[14px] font-semibold flex items-center justify-center">AA</div>
+                    <div className="w-10 h-10 rounded-full bg-[#5B57E8] text-white text-[14px] font-semibold flex items-center justify-center">{initials}</div>
                     <div>
-                      <p className="text-xs font-bold text-gray-900">Alex Admin</p>
-                      <p className="text-[10px] text-gray-505">alex.admin@acmecorp.com</p>
+                      <p className="text-xs font-bold text-gray-900">{fullName}</p>
+                      <p className="text-[10px] text-gray-505 truncate w-32">{email || "user@example.com"}</p>
                     </div>
                   </div>
                 </div>
