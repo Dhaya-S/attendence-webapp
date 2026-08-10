@@ -2,7 +2,6 @@ import React, { useState, useRef } from "react";
 import { Clock, Send, Edit2, Trash2, CalendarDays, Plus } from "lucide-react";
 import { TeamTask, TaskComment, WorkLog, TaskActivity } from "../types";
 import { formatDuration } from "../utils/duration-parser";
-import { CURRENT_USER } from "@/shared/constants/session";
 import { Btn } from "@/shared/components";
 import { cn } from "@/shared/utils";
 
@@ -15,6 +14,8 @@ interface TaskActivityListProps {
   onDeleteComment: (commentId: string) => void;
   onEditComment: (commentId: string, newText: string) => void;
   onOpenLogTime: () => void;
+  currentUserId?: string;
+  currentUserInitials?: string;
 }
 
 export function TaskActivityList({
@@ -26,6 +27,8 @@ export function TaskActivityList({
   onDeleteComment,
   onEditComment,
   onOpenLogTime,
+  currentUserId = "",
+  currentUserInitials = "?",
 }: TaskActivityListProps) {
   const [activeTab, setActiveTab] = useState<"all" | "comments" | "worklog">("all");
   const [commentText, setCommentText] = useState("");
@@ -109,7 +112,7 @@ export function TaskActivityList({
               <div key={act.id} className="flex gap-3 items-start text-xs">
                 <div
                   className="w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-bold text-white flex-shrink-0"
-                  style={{ backgroundColor: act.userId === CURRENT_USER.id ? CURRENT_USER.color : "#6B7280" }}
+                  style={{ backgroundColor: act.userId === currentUserId ? "#5C5CFF" : "#6B7280" }}
                 >
                   {act.userInitials}
                 </div>
@@ -151,7 +154,7 @@ export function TaskActivityList({
                       </span>
                     </div>
 
-                    {comm.authorId === CURRENT_USER.id && (
+                    {(comm.authorId === currentUserId || (!currentUserId && comm.authorId === "E004")) && (
                       <div className="flex gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
                         <button
                           type="button"
@@ -207,7 +210,8 @@ export function TaskActivityList({
           {/* Comments Composer */}
           <div className="flex gap-3 items-start text-xs pt-3 border-t border-gray-100">
             <div className="w-8 h-8 rounded-full bg-[#5C5CFF] text-white flex items-center justify-center font-bold text-xs flex-shrink-0">
-              {CURRENT_USER.initials}
+              {/* current user avatar initials */}
+              {currentUserInitials}
             </div>
             
             <div className="flex-1 space-y-2.5">
@@ -300,7 +304,7 @@ export function TaskActivityList({
                 <div key={log.id} className="flex gap-3 items-start text-xs">
                   <div
                     className="w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-bold text-white flex-shrink-0"
-                    style={{ backgroundColor: log.userId === CURRENT_USER.id ? CURRENT_USER.color : "#6B7280" }}
+                    style={{ backgroundColor: log.userId === currentUserId ? "#5C5CFF" : "#6B7280" }}
                   >
                     {log.userInitials}
                   </div>

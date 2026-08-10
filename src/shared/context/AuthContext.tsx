@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useEffect, useState, ReactNode } from "react";
 import { onAuthStateChanged, User } from "firebase/auth";
-import { doc, getDoc, onSnapshot, setDoc } from "firebase/firestore";
+import { doc, getDoc, onSnapshot, setDoc, collection } from "firebase/firestore";
 import { auth, db } from "@/shared/utils";
 
 export type UserRole = "admin" | "super_admin" | "hr_admin" | "manager" | "employee";
@@ -30,6 +30,35 @@ export const DEFAULT_FEATURE_PERMISSIONS: FeaturePermissions = {
   ],
 };
 
+/** Live organization profile — mirrors the Firestore organizations/{companyId} document */
+export interface OrgProfile {
+  companyName?: string;
+  orgName?: string;
+  name?: string;
+  portalName?: string;
+  businessType?: string;
+  industry?: string;
+  employeeCount?: string;
+  website?: string;
+  timezone?: string;
+  dateFormat?: string;
+  weekStartDay?: string;
+  language?: string;
+  address?: string;
+  headquarters?: string;
+  locations?: any[];
+  departments?: any[];
+  designations?: any[];
+  shifts?: any[];
+  leavePolicy?: Record<string, any>;
+  attendancePolicy?: Record<string, any>;
+  wfhPolicy?: Record<string, any>;
+  leaveTypes?: any[];
+  founded?: string;
+  logo?: string;
+  [key: string]: any;
+}
+
 export interface AppSession {
   user: User | null;
   role: UserRole | null;
@@ -41,6 +70,14 @@ export interface AppSession {
   featurePermissions: FeaturePermissions;
   hasPermission: (featureKey: string) => boolean;
   savePermissions: (newPermissions: FeaturePermissions) => Promise<void>;
+  /** Live org profile — real-time listener on organizations/{companyId} */
+  orgProfile: OrgProfile | null;
+  /** Live org departments subcollection */
+  orgDepartments: any[];
+  /** Live org designations subcollection */
+  orgDesignations: any[];
+  /** Live org shifts subcollection */
+  orgShifts: any[];
 }
 
 const AuthContext = createContext<AppSession>({
@@ -54,6 +91,10 @@ const AuthContext = createContext<AppSession>({
   featurePermissions: DEFAULT_FEATURE_PERMISSIONS,
   hasPermission: () => true,
   savePermissions: async () => {},
+  orgProfile: null,
+  orgDepartments: [],
+  orgDesignations: [],
+  orgShifts: [],
 });
 
 export function AuthProvider({ children }: { children: ReactNode }) {
@@ -65,6 +106,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isSetupComplete, setIsSetupComplete] = useState<boolean>(false);
   const [featurePermissions, setFeaturePermissions] = useState<FeaturePermissions>(DEFAULT_FEATURE_PERMISSIONS);
+
+  // ── Global org data (real-time) ───────────────────────────────────────────
+  const [orgProfile, setOrgProfile] = useState<OrgProfile | null>(null);
+  const [orgDepartments, setOrgDepartments] = useState<any[]>([]);
+  const [orgDesignations, setOrgDesignations] = useState<any[]>([]);
+  const [orgShifts, setOrgShifts] = useState<any[]>([]);
 
   // 1. Auth Listener
   useEffect(() => {
@@ -146,6 +193,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setDisplayName(null);
         setIsSetupComplete(false);
         setFeaturePermissions(DEFAULT_FEATURE_PERMISSIONS);
+        setOrgProfile(null);
+        setOrgDepartments([]);
+        setOrgDesignations([]);
+        setOrgShifts([]);
         setIsLoading(false);
       }
     });
@@ -153,28 +204,60 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => unsubscribe();
   }, []);
 
-  // 2. Real-time Firestore Listener for Feature Permissions
+  // 2. Real-time Firestore Listeners for org data + feature permissions
   useEffect(() => {
-    if (!companyId) return;
+    const activeCid = companyId || "default";
 
-    const orgRef = doc(db, "organizations", companyId);
-    const unsubscribeOrg = onSnapshot(orgRef, (snapshot) => {
-      if (snapshot.exists()) {
-        const data = snapshot.data();
-        if (data?.featurePermissions) {
-          setFeaturePermissions({
-            admin: data.featurePermissions.admin || DEFAULT_FEATURE_PERMISSIONS.admin,
-            hr_admin: data.featurePermissions.hr_admin || DEFAULT_FEATURE_PERMISSIONS.hr_admin,
-            manager: data.featurePermissions.manager || DEFAULT_FEATURE_PERMISSIONS.manager,
-            employee: data.featurePermissions.employee || DEFAULT_FEATURE_PERMISSIONS.employee,
-          });
+    const unsubs: (() => void)[] = [];
+
+    // ── Root org document (companyName, policy, locations, etc.) ──────────
+    const orgRef = doc(db, "organizations", activeCid);
+    unsubs.push(
+      onSnapshot(orgRef, (snapshot) => {
+        if (snapshot.exists()) {
+          const data = snapshot.data();
+          const cleanData = { ...data };
+          if (data && data["----------"] && !data.locations) {
+            cleanData.locations = data["----------"];
+          }
+          setOrgProfile({ id: snapshot.id, ...cleanData } as OrgProfile);
+
+          if (data?.featurePermissions) {
+            setFeaturePermissions({
+              admin: data.featurePermissions.admin || DEFAULT_FEATURE_PERMISSIONS.admin,
+              hr_admin: data.featurePermissions.hr_admin || DEFAULT_FEATURE_PERMISSIONS.hr_admin,
+              manager: data.featurePermissions.manager || DEFAULT_FEATURE_PERMISSIONS.manager,
+              employee: data.featurePermissions.employee || DEFAULT_FEATURE_PERMISSIONS.employee,
+            });
+          }
         }
-      }
-    }, (error) => {
-      console.warn("AuthContext: Error listening to org feature permissions:", error);
-    });
+      }, (error) => {
+        console.warn("AuthContext: Error listening to org document:", error);
+      })
+    );
 
-    return () => unsubscribeOrg();
+    // ── Departments subcollection ──────────────────────────────────────────
+    unsubs.push(
+      onSnapshot(collection(db, "organizations", activeCid, "departments"), (snap) => {
+        setOrgDepartments(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+      }, () => {})
+    );
+
+    // ── Designations subcollection ─────────────────────────────────────────
+    unsubs.push(
+      onSnapshot(collection(db, "organizations", activeCid, "designations"), (snap) => {
+        setOrgDesignations(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+      }, () => {})
+    );
+
+    // ── Shifts subcollection ───────────────────────────────────────────────
+    unsubs.push(
+      onSnapshot(collection(db, "organizations", activeCid, "shifts"), (snap) => {
+        setOrgShifts(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+      }, () => {})
+    );
+
+    return () => unsubs.forEach(u => u());
   }, [companyId]);
 
   // 3. Permission Check Helper
@@ -215,6 +298,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         featurePermissions,
         hasPermission,
         savePermissions,
+        orgProfile,
+        orgDepartments,
+        orgDesignations,
+        orgShifts,
       }}
     >
       {children}

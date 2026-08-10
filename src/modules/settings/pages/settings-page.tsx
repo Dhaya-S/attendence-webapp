@@ -18,6 +18,7 @@ import {
   PageHeader,
 } from "@/shared/components";
 import { ManageAccountPage } from "./manage-account-page";
+import { useAuth } from "@/shared/context/AuthContext";
 
 export function SettingsPage({ navigate }: { navigate: (p: AppPage) => void }) {
   const [section, setSection] = useState("General");
@@ -41,13 +42,16 @@ export function SettingsPage({ navigate }: { navigate: (p: AppPage) => void }) {
     return <ManageAccountPage onBack={() => setSection("General")} />;
   }
 
+  const { role, hasPermission } = useAuth();
+  const isAdmin = ["super_admin", "admin", "hr_admin"].includes(String(role || "").toLowerCase());
+
   const NAV = [
     { id: "General", icon: Settings, label: "General" },
     { id: "Appearance", icon: Eye, label: "Appearance" },
     { id: "Notifications", icon: Bell, label: "Notifications" },
     { id: "Security", icon: Shield, label: "Security" },
-    { id: "Integrations", icon: Globe, label: "Integrations" },
-    { id: "Manage Account", icon: Users, label: "Manage Account", admin: true },
+    ...(isAdmin ? [{ id: "Integrations", icon: Globe, label: "Integrations", admin: false }] : []),
+    ...(isAdmin ? [{ id: "Manage Account", icon: Users, label: "Manage Account", admin: true }] : []),
     { id: "About", icon: Info, label: "About" },
   ];
 

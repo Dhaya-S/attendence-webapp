@@ -6,7 +6,7 @@ import { LabelsSelector } from "./labels-selector";
 import { TaskActivityList } from "./task-activity-list";
 import { TimeTrackingDialog } from "./time-tracking-dialog";
 import { formatDuration } from "../utils/duration-parser";
-import { CURRENT_USER } from "@/shared/constants/session";
+import { useAuth } from "@/shared/context/AuthContext";
 import { Btn, SelectField } from "@/shared/components";
 import { cn } from "@/shared/utils";
 import { DiscardChangesDialog, ConfirmDialog, CustomAlertDialog } from "./discard-changes-dialog";
@@ -24,6 +24,14 @@ export function TaskDetailsDrawer({
   task,
   onUpdateTask,
 }: TaskDetailsDrawerProps) {
+  const { user, displayName, email } = useAuth();
+
+  // Build real current user from auth
+  const realUserName = displayName || user?.displayName || (email ? String(email).split("@")[0] : "Unknown User");
+  const realUserId = user?.uid || "unknown";
+  const realUserInitials = realUserName.split(" ").map((n: string) => n[0]).join("").toUpperCase().slice(0, 2) || "?";
+  const realUserColor = "#5C5CFF";
+
   const [render, setRender] = useState(isOpen);
   const [isClosing, setIsClosing] = useState(false);
 
@@ -113,9 +121,9 @@ export function TaskDetailsDrawer({
     return {
       id: `act-${Date.now()}`,
       taskId: currentTask.id,
-      userId: CURRENT_USER.id,
-      userName: CURRENT_USER.name,
-      userInitials: CURRENT_USER.initials,
+      userId: realUserId,
+      userName: realUserName,
+      userInitials: realUserInitials,
       type,
       details,
       createdAt: new Date().toISOString()
@@ -297,10 +305,10 @@ export function TaskDetailsDrawer({
   const handleAddComment = (text: string) => {
     const newComment: TaskComment = {
       id: `comm-${Date.now()}`,
-      authorId: CURRENT_USER.id,
-      authorName: CURRENT_USER.name,
-      authorInitials: CURRENT_USER.initials,
-      authorColor: CURRENT_USER.color,
+      authorId: realUserId,
+      authorName: realUserName,
+      authorInitials: realUserInitials,
+      authorColor: realUserColor,
       text,
       createdAt: new Date().toISOString()
     };
@@ -329,9 +337,9 @@ export function TaskDetailsDrawer({
     const newLog: WorkLog = {
       id: `wlog-${Date.now()}`,
       taskId: task.id,
-      userId: CURRENT_USER.id,
-      userName: CURRENT_USER.name,
-      userInitials: CURRENT_USER.initials,
+      userId: realUserId,
+      userName: realUserName,
+      userInitials: realUserInitials,
       timeSpentMinutes: spentMin,
       remainingMinutes: remainingMin,
       startedAt: dateStartedStr,
@@ -629,6 +637,8 @@ export function TaskDetailsDrawer({
               onDeleteComment={handleDeleteComment}
               onEditComment={handleEditComment}
               onOpenLogTime={() => setIsLogTimeOpen(true)}
+              currentUserId={realUserId}
+              currentUserInitials={realUserInitials}
             />
           </div>
 
@@ -676,7 +686,6 @@ export function TaskDetailsDrawer({
               selectedAssigneeId={task.assigneeId}
               selectedAssigneeEmail={task.assigneeEmail}
               onSelect={handleAssigneeChange}
-              currentUserDept={CURRENT_USER.dept}
             />
 
             <LabelsSelector

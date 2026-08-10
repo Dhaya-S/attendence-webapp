@@ -65,35 +65,36 @@ export function AttendancePage({
     }
   }, [activeTab, section]);
 
+  const targetCompanyId = companyId || "default";
+
   // Firestore: users
   useEffect(() => {
-    if (!companyId || companyId === "default") return;
-    const ref = collection(db, "organizations", companyId, "users");
+    const ref = collection(db, "organizations", targetCompanyId, "users");
     return onSnapshot(ref, (snap) => {
       setDbUsers(snap.docs.map(d => ({ id: d.id, ...d.data() })));
     }, (err) => console.warn("AttPage: users error:", err));
-  }, [companyId]);
+  }, [targetCompanyId]);
 
-  // Firestore: today's attendance
+  // Firestore: recent attendance (last 30 days for trends)
   useEffect(() => {
-    if (!companyId || companyId === "default") return;
-    const today = new Date().toISOString().split("T")[0];
-    const ref = collection(db, "organizations", companyId, "attendance");
-    const q = query(ref, where("date", "==", today));
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+    const thirtyDaysAgoStr = thirtyDaysAgo.toISOString().split("T")[0];
+    const ref = collection(db, "organizations", targetCompanyId, "attendance");
+    const q = query(ref, where("date", ">=", thirtyDaysAgoStr));
     return onSnapshot(q, (snap) => {
       setDbAttendance(snap.docs.map(d => ({ id: d.id, ...d.data() })));
       setLoadingAtt(false);
     }, (err) => { console.warn("AttPage: attendance error:", err); setLoadingAtt(false); });
-  }, [companyId]);
+  }, [targetCompanyId]);
 
   // Firestore: leave requests
   useEffect(() => {
-    if (!companyId || companyId === "default") return;
-    const ref = collection(db, "organizations", companyId, "leave_requests");
+    const ref = collection(db, "organizations", targetCompanyId, "leave_requests");
     return onSnapshot(ref, (snap) => {
       setDbLeaveRequests(snap.docs.map(d => ({ id: d.id, ...d.data() })));
     }, (err) => console.warn("AttPage: leave_requests error:", err));
-  }, [companyId]);
+  }, [targetCompanyId]);
 
   const normalizedEmail = String(email || user?.email || "").toLowerCase();
   const currentUserProfile = dbUsers.find(e => String(e.email || e.workEmail || "").toLowerCase() === normalizedEmail);
@@ -128,11 +129,12 @@ export function AttendancePage({
   // Enrich team members with today's attendance
   const teamRows = useMemo(() => {
     return myTeamMembers.map(emp => {
+      const today = new Date().toISOString().split("T")[0];
       const empEmail = String(emp.email || emp.workEmail || "").toLowerCase();
       const empId = String(emp.id || emp.employeeId || "");
       const attRecord = dbAttendance.find(a => {
         const aEmail = String(a.employeeEmail || a.email || "").toLowerCase();
-        return aEmail === empEmail || a.employeeId === empId;
+        return (aEmail === empEmail || a.employeeId === empId) && a.date === today;
       });
       const rawStatus = attRecord?.status || emp.attendanceStatus || "Absent";
       const s = String(rawStatus).toLowerCase();
@@ -198,13 +200,14 @@ export function AttendancePage({
     );
   }, [teamRows, teamDeptFilter, teamStatusFilter, teamEmpSearch]);
 
-  const exceptionRows = useMemo(() => {
+  const allExceptions = useMemo(() => {
     return myTeamMembers.map(emp => {
+      const today = new Date().toISOString().split("T")[0];
       const empEmail = String(emp.email || emp.workEmail || "").toLowerCase();
       const empId = String(emp.id || emp.employeeId || "");
       const attRecord = dbAttendance.find(a => {
         const aEmail = String(a.employeeEmail || a.email || "").toLowerCase();
-        return aEmail === empEmail || a.employeeId === empId;
+        return (aEmail === empEmail || a.employeeId === empId) && a.date === today;
       });
       const checkIn = attRecord?.checkIn || attRecord?.checkInTime || null;
       const checkOut = attRecord?.checkOut || attRecord?.checkOutTime || null;
@@ -212,14 +215,29 @@ export function AttendancePage({
       const initials = (emp.name || "??").split(" ").map((n: string) => n[0]).join("").toUpperCase().slice(0, 2);
       const color = emp.color || "#5C5CFF";
       return { ...emp, checkIn, checkOut, status, initials, color, attRecord };
-    }).filter(emp => {
+    });
+  }, [myTeamMembers, dbAttendance]);
+
+  const exceptionCounts = useMemo(() => {
+    const c = { "Missing Check-In": 0, "Missing Check-Out": 0, "Geo Fence Violations": 0, "Attendance Corrections": 0 };
+    allExceptions.forEach(emp => {
+      if (!emp.checkIn && emp.status !== "on leave" && emp.status !== "leave") c["Missing Check-In"]++;
+      if (emp.checkIn && !emp.checkOut && emp.status !== "on leave") c["Missing Check-Out"]++;
+      if ((emp.attRecord as any)?.geoViolation) c["Geo Fence Violations"]++;
+      if ((emp.attRecord as any)?.correctionRequested) c["Attendance Corrections"]++;
+    });
+    return c;
+  }, [allExceptions]);
+
+  const exceptionRows = useMemo(() => {
+    return allExceptions.filter(emp => {
       if (exTab === "Missing Check-In") return !emp.checkIn && emp.status !== "on leave" && emp.status !== "leave";
       if (exTab === "Missing Check-Out") return emp.checkIn && !emp.checkOut && emp.status !== "on leave";
       if (exTab === "Geo Fence Violations") return !!(emp.attRecord as any)?.geoViolation;
       if (exTab === "Attendance Corrections") return !!(emp.attRecord as any)?.correctionRequested;
       return false;
     });
-  }, [myTeamMembers, dbAttendance, exTab]);
+  }, [allExceptions, exTab]);
 
   const wfhByDept = useMemo(() => {
     const m: Record<string, { wfh: number; total: number }> = {};
@@ -233,13 +251,44 @@ export function AttendancePage({
   }, [teamRows]);
 
   const attTrendData = useMemo(() => {
-    const present = statusCounts.Present || 0;
-    const late = statusCounts.Late || 0;
-    const total = teamRows.length || 1;
-    const rate = Math.round(((present + late) / total) * 100);
-    const today = new Date();
-    return [{ date: today.toLocaleDateString("en-US", { month: "short", day: "numeric" }), rate }];
-  }, [statusCounts, teamRows]);
+    const data = [];
+    const teamEmails = new Set(myTeamMembers.map(m => String(m.email || m.workEmail || "").toLowerCase()));
+    const teamIds = new Set(myTeamMembers.map(m => String(m.id || m.employeeId || "")));
+    
+    // Group all dbAttendance records by date for the last 7 days
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date();
+      d.setDate(d.getDate() - i);
+      const dateStr = d.toISOString().split("T")[0];
+      const displayDate = d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+      
+      const dayRecords = dbAttendance.filter(a => {
+        const aEmail = String(a.employeeEmail || a.email || "").toLowerCase();
+        const isTeamMember = teamEmails.has(aEmail) || teamIds.has(String(a.employeeId));
+        return isTeamMember && a.date === dateStr;
+      });
+      
+      let presentCount = 0;
+      dayRecords.forEach(a => {
+         const s = String(a.status).toLowerCase();
+         if (s === "present" || s === "checked in" || s === "working" || s === "late" || s === "wfh" || s === "remote") {
+            presentCount++;
+         }
+      });
+      
+      if (i === 0 && dayRecords.length === 0 && teamRows.length > 0) {
+          const present = statusCounts.Present || 0;
+          const late = statusCounts.Late || 0;
+          const wfh = statusCounts.WFH || 0;
+          presentCount = present + late + wfh;
+      }
+      
+      const totalCount = myTeamMembers.length || 1;
+      const rate = Math.round((presentCount / totalCount) * 100);
+      data.push({ date: displayDate, rate });
+    }
+    return data;
+  }, [dbAttendance, myTeamMembers, statusCounts, teamRows]);
 
   return (
     <div className="flex flex-col h-full bg-[#F7F8FA] overflow-hidden text-left">
@@ -362,7 +411,7 @@ export function AttendancePage({
               >
                 {t}
                 <span className={cn("px-1.5 py-0.5 rounded-full text-[9px] font-bold", exTab === t ? "bg-[#5C5CFF] text-white" : "bg-gray-200 text-gray-600")}>
-                  {exceptionRows.length}
+                  {exceptionCounts[t as keyof typeof exceptionCounts]}
                 </span>
               </button>
             ))}

@@ -16,10 +16,10 @@ interface CreateTaskDrawerProps {
 }
 
 export function CreateTaskDrawer({ isOpen, onClose, onCreate }: CreateTaskDrawerProps) {
-  const { user, displayName, email, role } = useAuth();
-  const realReporterName = displayName || user?.displayName || (email ? email.split("@")[0] : "Alex Admin");
-  const realReporterInitials = realReporterName.split(" ").map((n: string) => n[0]).join("").toUpperCase().slice(0, 2) || "AA";
-  const realReporterRole = role ? (role.charAt(0).toUpperCase() + role.slice(1)) : "Administrator";
+  const { user, displayName, email, role, companyId } = useAuth();
+  const realReporterName = displayName || user?.displayName || (email ? email.split("@")[0] : "Me");
+  const realReporterInitials = realReporterName.split(" ").map((n: string) => n[0]).join("").toUpperCase().slice(0, 2) || "??";
+  const realReporterRole = role ? (role.charAt(0).toUpperCase() + role.slice(1)) : "Member";
   const [render, setRender] = useState(isOpen);
   const [isClosing, setIsClosing] = useState(false);
   const [showConfirmDiscard, setShowConfirmDiscard] = useState(false);
@@ -205,10 +205,7 @@ export function CreateTaskDrawer({ isOpen, onClose, onCreate }: CreateTaskDrawer
       hasErr = true;
     }
 
-    if (!assignee) {
-      setAssigneeError("Assignee is required.");
-      hasErr = true;
-    }
+    // Assignee is optional - skip validation if not selected
 
     if (assigneeError || dateError) {
       hasErr = true;
@@ -222,9 +219,10 @@ export function CreateTaskDrawer({ isOpen, onClose, onCreate }: CreateTaskDrawer
       return;
     }
 
+    const today = new Date().toISOString().split("T")[0];
     const dueFormatted = dueDate
       ? new Date(dueDate).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
-      : "Jul 8, 2026";
+      : "";
 
     onCreate({
       title: title.trim(),
@@ -235,11 +233,11 @@ export function CreateTaskDrawer({ isOpen, onClose, onCreate }: CreateTaskDrawer
       assigneeId: assignee?.id || "",
       assigneeName: assignee?.name || "",
       assigneeEmail: assignee?.email || "",
-      reporterId: user?.uid || CURRENT_USER.id,
+      reporterId: user?.uid || "",
       reporterName: realReporterName,
-      dept: CURRENT_USER.dept,
+      dept: "",
       due: dueFormatted,
-      dueDate: dueDate || "2026-07-08",
+      dueDate: dueDate || "",
       startDate: startDate || "",
       labels: labels || [],
       attachments: attachments || [],
@@ -506,7 +504,6 @@ export function CreateTaskDrawer({ isOpen, onClose, onCreate }: CreateTaskDrawer
                   setAssignee(val);
                   setAssigneeError(err || null);
                 }}
-                currentUserDept={CURRENT_USER.dept}
               />
 
               <LabelsSelector selectedLabels={labels} onChange={setLabels} />

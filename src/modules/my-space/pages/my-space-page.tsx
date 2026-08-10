@@ -105,7 +105,7 @@ const WEEKLY_ATT_DATA = [
 ];
 
 function barFill(s: string, h: number): string {
-  if (s === "Holiday" || s === "Weekend") return "#E5E7EB";
+  if (s === "Holiday" || s === "Weekend" || s === "Off") return "#E5E7EB";
   if (s === "Leave")  return "#C4B5FD";
   if (s === "WFH")    return "#93C5FD";
   if (s === "Late")   return "#FCD34D";
@@ -120,6 +120,61 @@ function fmtTs(ts: number): string {
   if (d < 86400000) return `${Math.floor(d / 3600000)}h ago`;
   return new Date(ts).toLocaleDateString("en-US", { month: "short", day: "numeric" });
 }
+
+const parseTimeToMinutes = (timeStr: string): number => {
+  if (!timeStr || timeStr === "—") return 0;
+  const match = timeStr.match(/^(\d+):(\d+)\s*(AM|PM)$/i);
+  if (!match) return 0;
+  let hours = parseInt(match[1], 10);
+  const minutes = parseInt(match[2], 10);
+  const ampm = match[3].toUpperCase();
+  if (ampm === "PM" && hours !== 12) hours += 12;
+  if (ampm === "AM" && hours === 12) hours = 0;
+  return hours * 60 + minutes;
+};
+
+const getDaysInMonth = (year: number, month: number) => {
+  const date = new Date(year, month, 1);
+  const days = [];
+  const startDay = date.getDay();
+  for (let i = 0; i < startDay; i++) {
+    days.push("");
+  }
+  const numDays = new Date(year, month + 1, 0).getDate();
+  for (let i = 1; i <= numDays; i++) {
+    days.push(String(i));
+  }
+  return days;
+};
+
+const getEventTiming = (ev: any) => {
+  let start = 540;
+  let end = 1080;
+
+  if (ev.label.includes("Checked In:")) {
+    const timeStr = ev.label.replace("Checked In: ", "");
+    const min = parseTimeToMinutes(timeStr) || 540;
+    start = min;
+    end = min + 35;
+  } else if (ev.label.includes("Checked Out:")) {
+    const timeStr = ev.label.replace("Checked Out: ", "");
+    const min = parseTimeToMinutes(timeStr) || 1080;
+    start = min - 35;
+    end = min;
+  } else if (ev.label.includes("Shift") || ev.label.includes("WFH") || ev.type === "Approved Leave" || ev.type === "Holiday") {
+    const match = ev.label.match(/(\d{2}:\d{2})-(\d{2}:\d{2})/);
+    if (match) {
+      const sParts = match[1].split(":");
+      const eParts = match[2].split(":");
+      start = parseInt(sParts[0], 10) * 60 + parseInt(sParts[1], 10);
+      end = parseInt(eParts[0], 10) * 60 + parseInt(eParts[1], 10);
+    } else {
+      start = 540;
+      end = 1080;
+    }
+  }
+  return { start, end };
+};
 
 const ATT_TIMELINE = [
   { date:"Jul 1, 2024",  day:"Tue", in:"09:02 AM", out:"06:15 PM", hours:"9h 13m", status:"Present", shift:"General Shift", late:false, wfh:false, ot:"1h 13m" },
@@ -157,13 +212,7 @@ const APPROVAL_ITEMS_DEFAULT = [
   { id:"A9", type:"Leave",      employee:"Robert Kim",     dept:"Finance",     detail:"Sick Leave · 2 days · Jul 1",              applied:"Jun 28", status:"Rejected", leaveType:"Sick Leave",            dateRange:"Jul 1 – Jul 2, 2024",     days:"2 days", reason:"Fever and fatigue." },
 ];
 
-const ANNOUNCEMENTS_DATA = [
-  { id:"ANN1", title:"Q2 All-Hands Meeting", body:"Join us on July 15th at 3:00 PM EST for our Q2 All-Hands. We'll cover company performance, departmental highlights, product roadmap updates, and recognize our top performers.\n\nAgenda:\n• Welcome & Q2 recap (15 min)\n• Department highlights (30 min)\n• Product roadmap preview (20 min)\n• Top performer recognition (15 min)\n• Q&A (20 min)\n\nThe meeting will be recorded for those who cannot attend live.", author:"Alex Admin", dept:"All Employees", timeAgo:"2 days ago", priority:"High", pinned:true, category:"Event", readCount:234, audience:"All Employees (847)" },
-  { id:"ANN2", title:"Office Closure – Independence Day", body:"All Acme Corporation offices will be closed on July 4th, 2024 in observance of Independence Day.\n\nEmergency contacts:\n• IT Support: it-emergency@acmecorp.com\n• Security: +1 (555) 911-0000\n\nNormal operations resume July 5th.", author:"Aisha Thompson", dept:"All", timeAgo:"5 days ago", priority:"Medium", pinned:false, category:"Notice", readCount:521, audience:"All Employees (847)" },
-  { id:"ANN3", title:"Updated Leave Policy – FY2025", body:"Effective January 1, 2025, annual leave entitlement increases from 18 to 20 days for employees with 3+ years of continuous tenure.\n\nKey changes:\n• Annual Leave: 18 → 20 days (3+ years tenure)\n• Carry Forward: increased from 5 to 8 days max\n• Sick Leave documentation: threshold raised to 3+ consecutive days\n\nPlease review and acknowledge by July 31, 2024.", author:"Aisha Thompson", dept:"All", timeAgo:"8 days ago", priority:"High", pinned:false, category:"Policy", readCount:412, audience:"All Employees (847)" },
-  { id:"ANN4", title:"New Employee Wellness Program", body:"We're excited to launch the Acme Wellness Program starting August 1st. All full-time employees will have access to mental health support, gym reimbursement up to $50/month, and weekly wellness sessions.", author:"Jennifer Walsh", dept:"HR", timeAgo:"13 days ago", priority:"Medium", pinned:false, category:"Benefits", readCount:189, audience:"Full-Time Employees (634)" },
-  { id:"ANN5", title:"Engineering All-Hands – Q2 Sprint Review", body:"The Engineering team all-hands will cover Q2 sprint completion, tech debt roadmap, and H2 architecture decisions. Attendance mandatory for all engineering staff.", author:"David Chen", dept:"Engineering", timeAgo:"15 days ago", priority:"High", pinned:false, category:"Team", readCount:67, audience:"Engineering (148)" },
-];
+const ANNOUNCEMENTS_DATA: any[] = [];
 
 const UPCOMING_EVENTS = [
   { date:"Jul 15", label:"Q2 All-Hands Meeting",              time:"3:00 PM EST", type:"Event",   color:"#5C5CFF" },
@@ -262,23 +311,28 @@ const MY_LEAVE_RICH = [
   {id:"L4",type:"Casual Leave",from:"Jan 2",  to:"Jan 2",  days:1,status:"Rejected", applied:"Dec 29",approver:"David Chen",   reason:"Personal work appointment.",               attachment:false,comment:"",               rejectReason:"Insufficient leave balance for this period. Please reapply after Jan 15."},
 ];
 
-const GeoMap = ({ userLat, userLng, orgLat, orgLng, radius, isInside, orgName }: { userLat: number, userLng: number, orgLat: number, orgLng: number, radius: number, isInside: boolean, orgName?: string }) => {
+const GeoMap = ({ userLat, userLng, orgLat, orgLng, radius, isInside, orgName }: { userLat: any, userLng: any, orgLat: any, orgLng: any, radius: number, isInside: boolean, orgName?: string }) => {
   const { isLoaded } = useJsApiLoader({
     id: 'google-map-script',
     googleMapsApiKey: import.meta.env.VITE_GOOGLE_MAPS_API_KEY || ""
   });
 
-  const center = { lat: orgLat || 40.7485, lng: orgLng || -73.9856 };
-  const userPos = { lat: userLat || 40.7485, lng: userLng || -73.9856 };
+  const parsedOrgLat = typeof orgLat === "string" ? parseFloat(orgLat) : orgLat;
+  const parsedOrgLng = typeof orgLng === "string" ? parseFloat(orgLng) : orgLng;
+  const parsedUserLat = typeof userLat === "string" ? parseFloat(userLat) : userLat;
+  const parsedUserLng = typeof userLng === "string" ? parseFloat(userLng) : userLng;
+
+  const center = { lat: parsedOrgLat || 40.7485, lng: parsedOrgLng || -73.9856 };
+  const userPos = { lat: parsedUserLat || 40.7485, lng: parsedUserLng || -73.9856 };
 
   const onLoad = React.useCallback(function callback(map: any) {
-    if (userLat && userLng && orgLat && orgLng) {
+    if (parsedUserLat && parsedUserLng && parsedOrgLat && parsedOrgLng) {
       const bounds = new window.google.maps.LatLngBounds();
       bounds.extend(center);
       bounds.extend(userPos);
       map.fitBounds(bounds, { padding: 40 });
     }
-  }, [center, userPos]);
+  }, [center, userPos, parsedUserLat, parsedUserLng, parsedOrgLat, parsedOrgLng]);
 
   if (!isLoaded) return <div className="w-full h-full bg-slate-50 flex items-center justify-center text-xs text-gray-500 rounded-xl border border-gray-200 shadow-inner">Loading Map...</div>;
 
@@ -340,7 +394,25 @@ export function MySpacePage({
   const userEmail = String(user?.email || authEmail || "").toLowerCase();
   const userName = authDisplayName || user?.displayName || (userEmail ? userEmail.split("@")[0] : "User");
   const userRole = String(role || authRole || "employee").toLowerCase();
-  const targetCompanyId = authCompanyId && authCompanyId !== "default" ? authCompanyId : "default";
+  const targetCompanyId = authCompanyId || "default";
+
+  // Calendar switcher states
+  const [calMonth, setCalMonth] = useState(() => new Date().getMonth());
+  const [calYear,  setCalYear]  = useState(() => new Date().getFullYear());
+  const [currentWeekStart, setCurrentWeekStart] = useState(() => {
+    const d = new Date();
+    const day = d.getDay();
+    const diff = d.getDate() - day + (day === 0 ? -6 : 1);
+    return new Date(d.setDate(diff));
+  });
+
+  // Attendance Filter States (Defined early to avoid TDZ errors)
+  const [attFMonth,      setAttFMonth]      = useState("All");
+  const [attFQuarter,    setAttFQuarter]    = useState("All");
+  const [attFDept,       setAttFDept]       = useState("All");
+  const [attFShift,      setAttFShift]      = useState("All");
+  const [attFStartDate,  setAttFStartDate]  = useState("");
+  const [attFEndDate,    setAttFEndDate]    = useState("");
 
   // Today's Date String e.g. "2026-08-04"
   const [todayStr, setTodayStr] = useState(() => new Date().toISOString().split("T")[0]);
@@ -387,12 +459,31 @@ export function MySpacePage({
   const [leaveRejectReason, setLeaveRejectReason] = useState("");
 
   useEffect(() => {
-    if (!targetCompanyId || targetCompanyId === "default") return;
+    if (!targetCompanyId) return;
     const orgRef = doc(db, "organizations", targetCompanyId);
     const unsub = onSnapshot(orgRef, (snap) => {
       if (snap.exists()) {
-        const d = snap.data();
-        setOrgData((prev: any) => ({ ...prev, ...d, userOverride: prev?.userOverride }));
+        const d = { ...snap.data() };
+        if (d["----------"] && !d.locations) {
+          d.locations = d["----------"];
+        }
+        setOrgData((prev: any) => {
+          const next = { ...prev, ...d, userOverride: prev?.userOverride };
+          if (prev?.userBranch && d.locations && Array.isArray(d.locations)) {
+            const matched = d.locations.find((l: any) =>
+              String(l.name || "").toLowerCase().trim() === String(prev.userBranch).toLowerCase().trim()
+            );
+            if (matched) {
+              next.latitude = parseFloat(matched.latitude || matched.lat || "0");
+              next.longitude = parseFloat(matched.longitude || matched.lng || "0");
+              next.name = matched.name;
+              if (matched.geofenceRadius || matched.radius) {
+                next.geofenceRadius = parseFloat(matched.geofenceRadius || matched.radius);
+              }
+            }
+          }
+          return next;
+        });
         if (d.leavePolicy) {
           setOrgLeavePolicy(d.leavePolicy);
         }
@@ -407,15 +498,29 @@ export function MySpacePage({
       userUnsub = onSnapshot(userRef, (snap) => {
          if (snap.exists()) {
              const ud = snap.data();
-             if (ud.latitude || ud.lat || ud.longitude || ud.lng) {
-                setOrgData((prev: any) => ({
-                    ...prev,
-                    latitude: ud.latitude || ud.lat || prev?.latitude,
-                    longitude: ud.longitude || ud.lng || prev?.longitude,
-                    name: ud.officeName || ud.branch || ud.name || prev?.name,
-                    userOverride: true
-                }));
-             }
+             const branch = ud.branch || ud.location || "";
+             setOrgData((prev: any) => {
+               const next = { ...prev, userBranch: branch };
+               if (ud.latitude || ud.lat || ud.longitude || ud.lng) {
+                  next.latitude = parseFloat(ud.latitude || ud.lat);
+                  next.longitude = parseFloat(ud.longitude || ud.lng);
+                  next.name = ud.officeName || ud.branch || ud.name || prev?.name;
+                  next.userOverride = true;
+               } else if (branch && prev?.locations && Array.isArray(prev.locations)) {
+                  const matched = prev.locations.find((l: any) =>
+                    String(l.name || "").toLowerCase().trim() === String(branch).toLowerCase().trim()
+                  );
+                  if (matched) {
+                    next.latitude = parseFloat(matched.latitude || matched.lat || "0");
+                    next.longitude = parseFloat(matched.longitude || matched.lng || "0");
+                    next.name = matched.name;
+                    if (matched.geofenceRadius || matched.radius) {
+                      next.geofenceRadius = parseFloat(matched.geofenceRadius || matched.radius);
+                    }
+                  }
+               }
+               return next;
+             });
          }
       });
     }
@@ -716,7 +821,7 @@ export function MySpacePage({
 
   // Leave Approval and Rejection Action Handlers
   const confirmLeaveApprove = async (id: string) => {
-    if (!targetCompanyId || targetCompanyId === "default") return;
+    if (!targetCompanyId) return;
     try {
       await setDoc(doc(db, "organizations", targetCompanyId, "leave_requests", id), {
         status: "Approved",
@@ -729,7 +834,7 @@ export function MySpacePage({
   };
 
   const confirmLeaveReject = async (id: string, note = "") => {
-    if (!targetCompanyId || targetCompanyId === "default") return;
+    if (!targetCompanyId) return;
     try {
       await setDoc(doc(db, "organizations", targetCompanyId, "leave_requests", id), {
         status: "Rejected",
@@ -806,6 +911,94 @@ export function MySpacePage({
     return () => unsub();
   }, [userEmail, targetCompanyId]);
 
+  // 2.4 Listen to Company Shifts
+  const [companyShifts, setCompanyShifts] = useState<any[]>([]);
+  useEffect(() => {
+    if (!targetCompanyId || targetCompanyId === "default") return;
+    const shiftsCol = collection(db, "organizations", targetCompanyId, "shifts");
+    const unsub = onSnapshot(shiftsCol, (snap) => {
+      setCompanyShifts(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+    }, (err) => {
+      console.warn("Error listening to shifts:", err);
+    });
+    return () => unsub();
+  }, [targetCompanyId]);
+
+  // 2.5 Auto-checkout logic for past days
+  useEffect(() => {
+    if (!attRecords || !userEmail || !targetCompanyId) return;
+
+    const checkAutoCheckout = async () => {
+      const now = new Date();
+      for (const record of attRecords) {
+        if (record.checkInTime && (!record.checkOutTime || record.checkOutTime === "—")) {
+          if (!record.date) continue;
+          
+          let shiftEndHour = 18;
+          let shiftEndMinute = 0;
+          let shiftName = record.shift || "General Shift";
+          
+          // Match the exact name, or name without " Shift" suffix
+          const shiftData = companyShifts.find(s => s.name === shiftName || `${s.name} Shift` === shiftName) || companyShifts[0];
+          
+          if (shiftData && shiftData.checkout) {
+             const [hh, mm] = shiftData.checkout.split(":");
+             if (hh && mm) {
+                shiftEndHour = parseInt(hh, 10);
+                shiftEndMinute = parseInt(mm, 10);
+             }
+          }
+          
+          const parts = record.date.split("-");
+          if (parts.length !== 3) continue;
+          
+          const recordDate = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]));
+          recordDate.setHours(shiftEndHour + 6, shiftEndMinute, 0, 0); // 6 hours after shift end time
+          
+          if (now.getTime() > recordDate.getTime()) {
+            const dateObj = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]), shiftEndHour, shiftEndMinute, 0);
+            const checkOutStr = dateObj.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: true });
+            
+            const startMs = new Date(record.checkInTimestamp || dateObj.getTime() - 9 * 3600000).getTime();
+            const endMs = dateObj.getTime();
+            const diffMin = Math.max(0, Math.floor((endMs - startMs) / 60000));
+            const h = Math.floor(diffMin / 60);
+            const m = diffMin % 60;
+            
+            const updatedRecord = {
+              checkOutTime: checkOutStr,
+              checkOutTimestamp: dateObj.toISOString(),
+              hoursWorked: `${h}h ${m}m`,
+              hoursNum: parseFloat((diffMin / 60).toFixed(1)),
+              status: "Completed",
+              autoCheckedOut: true,
+              updatedAt: now.toISOString(),
+            };
+            
+            try {
+              const orgAttRef = doc(db, "organizations", targetCompanyId, "users", userEmail, "attendance", record.date);
+              await setDoc(orgAttRef, updatedRecord, { merge: true });
+              
+              const globalAttRef = doc(db, "users", userEmail, "attendance", record.date);
+              await setDoc(globalAttRef, updatedRecord, { merge: true });
+              
+              await setDoc(doc(db, "organizations", targetCompanyId, "users", userEmail), {
+                attendanceStatus: "Checked Out",
+                lastCheckOut: checkOutStr,
+              }, { merge: true });
+              
+
+            } catch (err) {
+              console.error("Auto check-out error:", err);
+            }
+          }
+        }
+      }
+    };
+    
+    checkAutoCheckout();
+  }, [attRecords, userEmail, targetCompanyId]);
+
   // 3. Listen to Real-time Company Users for Status Widgets
   useEffect(() => {
     if (!targetCompanyId || targetCompanyId === "default") return;
@@ -824,15 +1017,16 @@ export function MySpacePage({
   useEffect(() => {
     if (!orgUsers || orgUsers.length === 0) {
       const isUserPresent = checkedIn || Boolean(todayAtt?.checkInTime);
-      const isUserLate = todayAtt?.status === "Late";
+      const isUserLate = isUserPresent && todayAtt?.status === "Late";
       const isUserWfh = todayAtt?.status === "WFH";
+      const isUserLeave = todayAtt?.status === "Leave" || todayAtt?.status === "On Leave";
 
       setStatCounts({
         present: isUserPresent ? 1 : 0,
         wfh: isUserWfh ? 1 : 0,
-        leave: !isUserPresent ? 1 : 0,
+        leave: isUserLeave ? 1 : 0,
         late: isUserLate ? 1 : 0,
-        offline: 0,
+        offline: (!isUserPresent && !isUserLeave && !isUserWfh) ? 1 : 0,
       });
       return;
     }
@@ -847,19 +1041,24 @@ export function MySpacePage({
           if (todayAtt?.status === "Late") lt++; // ALSO show in Late card if late!
           if (todayAtt?.status === "WFH") w++;
         } else {
-          l++; // Not checked in -> Show in Leave card
+          if (todayAtt?.status === "Leave" || todayAtt?.status === "On Leave") {
+            l++;
+          } else {
+            off++;
+          }
         }
       } else {
         const att = String(u.attendanceStatus || "").toLowerCase();
-        if (att === "present" || att === "checked in" || att === "working" || att === "late" || u.lastCheckIn) {
+        if (att === "present" || att === "checked in" || att === "working" || att === "late") {
           p++; // Present card
           if (att === "late") lt++;
-          if (att === "wfh") w++;
         } else if (att === "wfh") {
           w++;
           p++;
+        } else if (att === "leave" || att === "on leave") {
+          l++;
         } else {
-          l++; // Not checked in -> Show in Leave card
+          off++; // Not checked in and not on leave -> Offline
         }
       }
     });
@@ -882,20 +1081,113 @@ export function MySpacePage({
         }
       }
 
+      const checkInMin = parseTimeToMinutes(r.checkInTime || "—");
+      let shiftCheckIn = 9 * 60; // Default 09:00 AM
+      const shiftData = companyShifts.find((s: any) => s.name === r.shift || `${s.name} Shift` === r.shift) || companyShifts[0];
+      if (shiftData && shiftData.checkin) {
+        const [hh, mm] = shiftData.checkin.split(":");
+        if (hh && mm) {
+          shiftCheckIn = parseInt(hh, 10) * 60 + parseInt(mm, 10);
+        }
+      }
+
+      const isLate = r.status === "Late" || (checkInMin > 0 && checkInMin > (shiftCheckIn + 15));
+      const isWfh = r.location === "Work from Home" || r.status === "WFH" || String(r.location || "").toLowerCase().includes("home");
+
+      let finalStatus = "Present";
+      if (r.status === "Leave" || r.status === "On Leave") finalStatus = "Leave";
+      else if (r.status === "Weekend") finalStatus = "Weekend";
+      else if (isWfh) finalStatus = "WFH";
+      else if (isLate) finalStatus = "Late";
+
       return {
         date: dateStr,
         day: dayStr,
         in: r.checkInTime || "—",
         out: r.checkOutTime || "—",
         hours: r.hoursWorked || "—",
-        status: r.status || "Present",
+        status: finalStatus,
         shift: r.shift || "General Shift",
-        late: r.status === "Late",
-        wfh: r.status === "WFH",
+        late: isLate,
+        wfh: isWfh,
         ot: "0h",
+        rawDate: r.date,
       };
     });
-  }, [attRecords]);
+  }, [attRecords, companyShifts]);
+
+  // Filtered Attendance Timeline
+  const filteredAttTimeline = useMemo(() => {
+    let list = realAttTimeline;
+
+    // Filter by Month
+    if (attFMonth && attFMonth !== "All") {
+      const monthMap: Record<string, string> = {
+        "January": "Jan", "February": "Feb", "March": "Mar", "April": "Apr", "May": "May", "June": "Jun",
+        "July": "Jul", "August": "Aug", "September": "Sep", "October": "Oct", "November": "Nov", "December": "Dec"
+      };
+      const targetMonth = monthMap[attFMonth];
+      if (targetMonth) {
+        list = list.filter(r => r.date.includes(targetMonth));
+      }
+    }
+
+    // Filter by Quarter
+    if (attFQuarter && attFQuarter !== "All") {
+      const quarterMonths: Record<string, string[]> = {
+        "Q1": ["Jan", "Feb", "Mar"],
+        "Q2": ["Apr", "May", "Jun"],
+        "Q3": ["Jul", "Aug", "Sep"],
+        "Q4": ["Oct", "Nov", "Dec"]
+      };
+      const targetMonths = quarterMonths[attFQuarter] || [];
+      list = list.filter(r => targetMonths.some(m => r.date.includes(m)));
+    }
+
+    // Filter by Shift
+    if (attFShift && attFShift !== "All") {
+      const prefix = attFShift.split(" ")[0];
+      list = list.filter(r => r.shift.toLowerCase().includes(prefix.toLowerCase()));
+    }
+
+    // Filter by Date Range
+    if (attFStartDate) {
+      list = list.filter(r => r.rawDate >= attFStartDate);
+    }
+    if (attFEndDate) {
+      list = list.filter(r => r.rawDate <= attFEndDate);
+    }
+
+    return list;
+  }, [realAttTimeline, attFMonth, attFQuarter, attFShift, attFStartDate, attFEndDate]);
+
+  // Export to CSV helper
+  const exportToCSV = (data: any[], filename = "attendance_report.csv") => {
+    const headers = ["Date", "Day", "Shift", "Check-in", "Check-out", "Hours Worked", "Status"];
+    const rows = data.map(r => [
+      r.rawDate || r.date,
+      r.day,
+      r.shift,
+      r.in,
+      r.out,
+      r.hours,
+      r.status
+    ]);
+    const csvContent = [
+      headers.join(","),
+      ...rows.map(e => e.map(val => `"${String(val).replace(/"/g, '""')}"`).join(","))
+    ].join("\n");
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute("download", filename);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
 
   // 5. Listen to Real-time Attendance Issues from Firestore
   const [dbIssues, setDbIssues] = useState<any[]>([]);
@@ -929,11 +1221,19 @@ export function MySpacePage({
 
       const rolesArr = Array.isArray(iss.targetRoles) ? iss.targetRoles : ["manager", "hr_admin"];
 
+      // If issue is targeted to super_admin/admin or created by a super_admin/admin:
+      const isSuperAdminIssue = rolesArr.includes("super_admin") || rolesArr.includes("admin") || 
+        ["super_admin", "admin"].includes(String(iss.createdByRole).toLowerCase());
+
+      if (isSuperAdminIssue) {
+        return normalizedRole === "super_admin" || normalizedRole === "admin";
+      }
+
       if (normalizedRole === "super_admin" || normalizedRole === "admin") {
         return true;
       }
       if (normalizedRole === "hr_admin") {
-        return rolesArr.includes("hr_admin") || rolesArr.includes("super_admin");
+        return rolesArr.includes("hr_admin");
       }
       if (normalizedRole === "manager") {
         return rolesArr.includes("manager");
@@ -941,6 +1241,85 @@ export function MySpacePage({
       return false;
     });
   }, [dbIssues, userEmail, userRole]);
+
+  // Filtered Visible Issues for Issues tab
+  const filteredVisibleIssues = useMemo(() => {
+    let list = visibleIssues;
+
+    // Filter by Month
+    if (attFMonth && attFMonth !== "All") {
+      const monthMap: Record<string, number> = {
+        "January": 0, "February": 1, "March": 2, "April": 3, "May": 4, "June": 5,
+        "July": 6, "August": 7, "September": 8, "October": 9, "November": 10, "December": 11
+      };
+      const targetMonthIdx = monthMap[attFMonth];
+      if (targetMonthIdx !== undefined) {
+        list = list.filter(iss => {
+          if (!iss.date) return false;
+          const m = new Date(iss.date).getMonth();
+          return m === targetMonthIdx;
+        });
+      }
+    }
+
+    // Filter by Quarter
+    if (attFQuarter && attFQuarter !== "All") {
+      const quarterMap: Record<string, number[]> = {
+        "Q1": [0, 1, 2], "Q2": [3, 4, 5], "Q3": [6, 7, 8], "Q4": [9, 10, 11]
+      };
+      const targetMonths = quarterMap[attFQuarter] || [];
+      list = list.filter(iss => {
+        if (!iss.date) return false;
+        const m = new Date(iss.date).getMonth();
+        return targetMonths.includes(m);
+      });
+    }
+
+    // Filter by Shift
+    if (attFShift && attFShift !== "All") {
+      const prefix = attFShift.split(" ")[0];
+      list = list.filter(iss => iss.shift && String(iss.shift).toLowerCase().includes(prefix.toLowerCase()));
+    }
+
+    // Filter by Date Range
+    if (attFStartDate) {
+      list = list.filter(iss => iss.date >= attFStartDate);
+    }
+    if (attFEndDate) {
+      list = list.filter(iss => iss.date <= attFEndDate);
+    }
+
+    return list;
+  }, [visibleIssues, attFMonth, attFQuarter, attFShift, attFStartDate, attFEndDate]);
+
+  // Export Issues to CSV helper
+  const exportIssuesToCSV = (data: any[], filename = "attendance_issues_report.csv") => {
+    const headers = ["ID", "Issue Type", "Date", "Requested Timing", "Reason", "Comment", "Status", "Submitted By"];
+    const rows = data.map(r => [
+      r.id,
+      r.type,
+      r.date,
+      `${r.requestedCheckIn || "—"} – ${r.requestedCheckOut || "—"}`,
+      r.reason,
+      r.comment || "",
+      r.status,
+      r.createdByName || r.createdBy
+    ]);
+    const csvContent = [
+      headers.join(","),
+      ...rows.map(e => e.map(val => `"${String(val).replace(/"/g, '""')}"`).join(","))
+    ].join("\n");
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute("download", filename);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
 
   // Aggregated Real-Time Approvals combining Leave Requests and Attendance Issues from Firestore
   const realTimeApprovals = useMemo(() => {
@@ -1098,26 +1477,80 @@ export function MySpacePage({
         let orgRadius = 200;
         let orgName = "New York HQ";
 
-        if (targetCompanyId && targetCompanyId !== "default") {
+        if (targetCompanyId) {
           const orgDoc = await getDoc(doc(db, "organizations", targetCompanyId));
-          const orgData = orgDoc.data();
-          if (orgData) {
-            orgLat = parseFloat(orgData.latitude || orgData.location?.latitude || orgData.lat || orgLat.toString());
-            orgLng = parseFloat(orgData.longitude || orgData.location?.longitude || orgData.lng || orgLng.toString());
-            orgRadius = parseFloat(orgData.geofenceRadius || orgData.radius || "200");
-            orgName = orgData.name || orgData.companyName || orgName;
+          const orgData = orgDoc.exists() ? { ...orgDoc.data() } : {};
+          if (orgData["----------"] && !orgData.locations) {
+            orgData.locations = orgData["----------"];
           }
+          
+          let userBranch = "";
+          let userAssignedRadius: number | null = null;
+          let userAssignedLat: number | null = null;
+          let userAssignedLng: number | null = null;
 
           const userDoc = await getDoc(doc(db, "organizations", targetCompanyId, "users", userEmail));
           if (userDoc.exists()) {
             const userData = userDoc.data();
+            userBranch = userData.branch || userData.location || "";
             if (userData.latitude || userData.lat) {
-               orgLat = parseFloat(userData.latitude || userData.lat || orgLat.toString());
-               orgLng = parseFloat(userData.longitude || userData.lng || orgLng.toString());
-               orgName = userData.officeName || userData.branch || userData.name || orgName;
-               if (userData.geofenceRadius || userData.radius) {
-                 orgRadius = parseFloat(userData.geofenceRadius || userData.radius || orgRadius.toString());
-               }
+              userAssignedLat = parseFloat(userData.latitude || userData.lat);
+              userAssignedLng = parseFloat(userData.longitude || userData.lng);
+            }
+            if (userData.geofenceRadius || userData.radius) {
+              userAssignedRadius = parseFloat(userData.geofenceRadius || userData.radius);
+            }
+          }
+
+          if (userAssignedLat !== null && userAssignedLng !== null) {
+            orgLat = userAssignedLat;
+            orgLng = userAssignedLng;
+            orgName = userBranch || orgName;
+            if (userAssignedRadius !== null) {
+              orgRadius = userAssignedRadius;
+            }
+          } else {
+            let matchedBranch: any = null;
+            if (userBranch) {
+              const branchSnap = await getDoc(doc(db, "organizations", targetCompanyId, "branches", userBranch.replace(/\s+/g, "_")));
+              if (branchSnap.exists()) {
+                matchedBranch = branchSnap.data();
+              } else {
+                const branchesCol = await getDocs(collection(db, "organizations", targetCompanyId, "branches"));
+                const branchesList = branchesCol.docs.map(d => ({ id: d.id, ...d.data() }));
+                matchedBranch = branchesList.find((b: any) => 
+                  String(b.name || "").toLowerCase().trim() === String(userBranch).toLowerCase().trim() ||
+                  String(b.id || "").toLowerCase().trim() === String(userBranch).toLowerCase().trim()
+                );
+              }
+
+              if (!matchedBranch && orgData?.locations && Array.isArray(orgData.locations)) {
+                matchedBranch = orgData.locations.find((l: any) => 
+                  String(l.name || "").toLowerCase().trim() === String(userBranch).toLowerCase().trim()
+                );
+              }
+            }
+
+            if (!matchedBranch && orgData?.locations && Array.isArray(orgData.locations) && orgData.locations.length > 0) {
+              matchedBranch = orgData.locations[0];
+            }
+            if (!matchedBranch) {
+              const branchesCol = await getDocs(collection(db, "organizations", targetCompanyId, "branches"));
+              if (!branchesCol.empty) {
+                matchedBranch = branchesCol.docs[0].data();
+              }
+            }
+
+            if (matchedBranch) {
+              orgLat = parseFloat(matchedBranch.latitude || matchedBranch.lat || orgLat.toString());
+              orgLng = parseFloat(matchedBranch.longitude || matchedBranch.lng || orgLng.toString());
+              orgName = matchedBranch.name || userBranch || orgName;
+              orgRadius = parseFloat(matchedBranch.geofenceRadius || matchedBranch.radius || orgRadius.toString());
+            } else if (orgData) {
+              orgLat = parseFloat(orgData.latitude || orgData.location?.latitude || orgData.lat || orgLat.toString());
+              orgLng = parseFloat(orgData.longitude || orgData.location?.longitude || orgData.lng || orgLng.toString());
+              orgRadius = parseFloat(orgData.geofenceRadius || orgData.radius || "200");
+              orgName = orgData.name || orgData.companyName || orgName;
             }
           }
         }
@@ -1231,16 +1664,17 @@ export function MySpacePage({
 
   // Build real monthly chart data from user's subcollection
   const realMonthlyChartData = useMemo(() => {
-    if (!attRecords || attRecords.length === 0) return MONTHLY_ATT_DATA;
     const map = new Map<number, { h: number; s: string }>();
-    attRecords.forEach((r) => {
-      if (r.date) {
-        const dayNum = parseInt(r.date.split("-")[2], 10);
-        if (!isNaN(dayNum)) {
-          map.set(dayNum, { h: r.hoursNum || 8, s: r.status || "Present" });
+    if (attRecords && attRecords.length > 0) {
+      attRecords.forEach((r) => {
+        if (r.date) {
+          const dayNum = parseInt(r.date.split("-")[2], 10);
+          if (!isNaN(dayNum)) {
+            map.set(dayNum, { h: r.hoursNum || 8, s: r.status || "Present" });
+          }
         }
-      }
-    });
+      });
+    }
 
     const result = [];
     for (let i = 1; i <= 31; i++) {
@@ -1252,6 +1686,65 @@ export function MySpacePage({
       });
     }
     return result;
+  }, [attRecords]);
+
+  // Build real yearly chart data from user's subcollection
+  const realYearlyChartData = useMemo(() => {
+    const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    const monthlySum = new Map<number, { totalHours: number; daysCount: number; statusList: string[] }>();
+    
+    for (let i = 0; i < 12; i++) {
+      monthlySum.set(i, { totalHours: 0, daysCount: 0, statusList: [] });
+    }
+    
+    if (attRecords && attRecords.length > 0) {
+      attRecords.forEach((r) => {
+        if (r.date) {
+          const parts = r.date.split("-");
+          if (parts.length === 3) {
+            const mIdx = parseInt(parts[1], 10) - 1;
+            if (mIdx >= 0 && mIdx < 12) {
+              const data = monthlySum.get(mIdx)!;
+              const hours = r.hoursNum || 0;
+              const status = r.status || "Present";
+              // count checking in days or status that implies working/on leave
+              if (hours > 0 || ["present", "completed", "late", "wfh", "leave", "on leave"].includes(status.toLowerCase())) {
+                data.totalHours += hours;
+                data.daysCount += 1;
+                data.statusList.push(status);
+              }
+            }
+          }
+        }
+      });
+    }
+    
+    return months.map((monthName, idx) => {
+      const data = monthlySum.get(idx)!;
+      let avgHours = 0;
+      if (data.daysCount > 0) {
+        avgHours = parseFloat((data.totalHours / data.daysCount).toFixed(1));
+      }
+      
+      let dominantStatus = "Off";
+      if (data.statusList.length > 0) {
+        const counts = new Map<string, number>();
+        data.statusList.forEach(s => counts.set(s, (counts.get(s) || 0) + 1));
+        let maxVal = 0;
+        counts.forEach((val, key) => {
+          if (val > maxVal) {
+            maxVal = val;
+            dominantStatus = key;
+          }
+        });
+      }
+      
+      return {
+        day: monthName,
+        h: avgHours,
+        s: dominantStatus
+      };
+    });
   }, [attRecords]);
 
   // Real Attendance Summary metrics for user
@@ -1266,6 +1759,13 @@ export function MySpacePage({
       if (r.hoursNum) totalHours += r.hoursNum;
     });
 
+    // If currently checked in, add today's running hours
+    if (checkedIn && todayAtt?.checkInTimestamp) {
+      const startMs = new Date(todayAtt.checkInTimestamp).getTime();
+      const diffMin = Math.max(0, Math.floor((Date.now() - startMs) / 60000));
+      totalHours += diffMin / 60;
+    }
+
     return {
       present: present || (checkedIn ? 1 : 0),
       wfh,
@@ -1273,7 +1773,7 @@ export function MySpacePage({
       late,
       totalHours: Math.round(totalHours),
     };
-  }, [attRecords, checkedIn]);
+  }, [attRecords, checkedIn, todayAtt]);
 
   const liveDateFormatted = new Date().toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", year: "numeric" });
 
@@ -1382,15 +1882,70 @@ export function MySpacePage({
 
   // Tasks
   const TASK_VIEWS = ["Assigned","In Progress","Completed","Overdue","Archived"];
-  const [myTasks, setMyTasks] = useState([
-    { id:"TASK-001", title:"Review Q2 attendance report",        priority:"High",   status:"Assigned",    reporter:"David Chen",    assignee:"Alex Admin", created:"Jun 28", updated:"Jul 1",  due:"Jul 1",  done:false, overdue:true  },
-    { id:"TASK-002", title:"Update leave policy draft",          priority:"High",   status:"In Progress", reporter:"Jennifer Walsh", assignee:"Alex Admin", created:"Jun 29", updated:"Jul 1",  due:"Jul 3",  done:false, overdue:false },
-    { id:"TASK-003", title:"Onboard 3 new engineering hires",    priority:"Medium", status:"Assigned",    reporter:"David Chen",    assignee:"Alex Admin", created:"Jul 1",  updated:"Jul 1",  due:"Jul 8",  done:false, overdue:false },
-    { id:"TASK-004", title:"Reply to HR audit request",          priority:"Low",    status:"Overdue",     reporter:"Jennifer Walsh", assignee:"Alex Admin", created:"Jun 20", updated:"Jun 30", due:"Jun 30", done:false, overdue:true  },
-    { id:"TASK-005", title:"Configure geo-fence – Austin office",priority:"Low",    status:"Assigned",    reporter:"Carlos Rivera",  assignee:"Alex Admin", created:"Jul 1",  updated:"Jul 1",  due:"Jul 15", done:false, overdue:false },
-    { id:"TASK-006", title:"Schedule performance reviews",       priority:"Medium", status:"Completed",   reporter:"Aisha Thompson", assignee:"Alex Admin", created:"Jun 25", updated:"Jul 1",  due:"Jul 20", done:true,  overdue:false },
-    { id:"TASK-007", title:"Review updated department org chart",priority:"Medium", status:"Assigned",    reporter:"David Chen",    assignee:"Alex Admin", created:"Jun 26", updated:"Jun 26", due:"Jul 5",  done:false, overdue:false },
-  ]);
+  const [myTasks, setMyTasks] = useState<any[]>([]);
+  const [ANNOUNCEMENTS_DATA, setANNOUNCEMENTS_DATA] = useState<any[]>([]);
+  const [recentActivities, setRecentActivities] = useState<any[]>([]);
+
+  // 6. Fetch Tasks, Announcements, and Activities
+  useEffect(() => {
+    if (!targetCompanyId || targetCompanyId === "default") return;
+
+    // Tasks
+    const tasksCol = collection(db, "organizations", targetCompanyId, "tasks");
+    const unsubTasks = onSnapshot(tasksCol, (snap) => {
+      const allTasks = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      const userTasks = allTasks.filter(t => t.assignee === userName || t.assigneeEmail === userEmail);
+      setMyTasks(userTasks);
+    });
+
+    // Announcements
+    const annCol = collection(db, "organizations", targetCompanyId, "announcements");
+    const unsubAnn = onSnapshot(annCol, (snap) => {
+      const data = snap.docs.map(d => {
+        const item = d.data();
+        let timeAgo = "Just now";
+        if (item.createdAt) {
+          const t = typeof item.createdAt === 'number' ? item.createdAt : new Date(item.createdAt).getTime();
+          const diff = Math.floor((Date.now() - t) / 60000);
+          if (diff < 60) timeAgo = `${diff}m ago`;
+          else if (diff < 1440) timeAgo = `${Math.floor(diff/60)}h ago`;
+          else timeAgo = `${Math.floor(diff/1440)}d ago`;
+        }
+        return { id: d.id, ...item, timeAgo };
+      });
+      setANNOUNCEMENTS_DATA(data);
+    });
+
+    // Activities (Team Feed)
+    const feedCol = collection(db, "organizations", targetCompanyId, "team_feed");
+    const unsubFeed = onSnapshot(feedCol, (snap) => {
+      const allFeed = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      
+      // Map team feed to recent activities format
+      const mappedActivities = allFeed
+        .sort((a: any, b: any) => {
+           const tA = typeof a.createdAt === 'number' ? a.createdAt : new Date(a.createdAt || 0).getTime();
+           const tB = typeof b.createdAt === 'number' ? b.createdAt : new Date(b.createdAt || 0).getTime();
+           return tB - tA;
+        })
+        .slice(0, 5) // Get latest 5
+        .map((a: any) => ({
+          id: a.id,
+          icon: a.type === "Announcement" ? Megaphone : a.type === "Leave" ? CalendarDays : CheckCircle,
+          color: a.type === "Announcement" ? "#3B82F6" : a.type === "Leave" ? "#F59E0B" : "#22C55E",
+          text: a.content || `${a.author} posted an update`,
+          time: new Date(typeof a.createdAt === 'number' ? a.createdAt : a.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric" })
+        }));
+      setRecentActivities(mappedActivities);
+    });
+
+    return () => {
+      unsubTasks();
+      unsubAnn();
+      unsubFeed();
+    };
+  }, [targetCompanyId, userName, userEmail]);
+
   const [taskView,        setTaskView]        = useState("Assigned");
   const [activeTaskId,    setActiveTaskId]    = useState<string|null>(null);
   const [taskSearch,      setTaskSearch]      = useState("");
@@ -1496,10 +2051,6 @@ export function MySpacePage({
   const [attExcDrawer,   setAttExcDrawer]   = useState<string|null>(null);
   const [showAttFilter,  setShowAttFilter]  = useState(false);
   const [showAttExport,  setShowAttExport]  = useState(false);
-  const [attFMonth,      setAttFMonth]      = useState("All");
-  const [attFQuarter,    setAttFQuarter]    = useState("All");
-  const [attFDept,       setAttFDept]       = useState("All");
-  const [attFShift,      setAttFShift]      = useState("All");
   const confirmIssueReject = async () => {
     if (!issueRejectId || !issueRejectNote.trim()) return;
     try {
@@ -1890,12 +2441,17 @@ export function MySpacePage({
               <div className="flex items-center justify-between px-4 py-2 border-b border-gray-100">
                 <div className="flex items-center gap-2">
                   <h3 className="text-xs font-semibold text-gray-800">Pending Approvals</h3>
-                  {pending.length > 0 && <span className="min-w-[18px] h-4.5 px-1.5 rounded-full bg-[#5C5CFF] text-white text-[9px] font-bold flex items-center justify-center">{pending.length}</span>}
+                  {pendingApprovals.length > 0 && <span className="min-w-[18px] h-4.5 px-1.5 rounded-full bg-[#5C5CFF] text-white text-[9px] font-bold flex items-center justify-center">{pendingApprovals.length}</span>}
                 </div>
                 <button onClick={() => setTab("Approvals")} className="text-xs text-[#5C5CFF] hover:underline font-medium">View all →</button>
               </div>
               <div className="grid grid-cols-4 divide-x divide-gray-100 border-b border-gray-100 bg-gray-50/50">
-                {[{label:"Leave",count:pending.length,color:"#F59E0B"},{label:"Attendance",count:5,color:"#5C5CFF"},{label:"Shift",count:1,color:"#22C55E"},{label:"Department",count:1,color:"#8B5CF6"}].map(t => (
+                {[
+                  {label:"Leave",count:pendingApprovals.filter(a => a.category === "Leave").length,color:"#F59E0B"},
+                  {label:"Attendance",count:pendingApprovals.filter(a => a.category === "Attendance").length,color:"#5C5CFF"},
+                  {label:"Shift",count:pendingApprovals.filter(a => a.category === "Shift").length,color:"#22C55E"},
+                  {label:"Department",count:pendingApprovals.filter(a => a.category === "Department").length,color:"#8B5CF6"}
+                ].map(t => (
                   <button key={t.label} onClick={() => { setTab("Approvals"); setApprovalType(t.label); }}
                     className="py-2 text-center hover:bg-gray-50 transition-colors">
                     <div className="text-base font-bold" style={{ color:t.color }}>{t.count}</div>
@@ -1904,17 +2460,17 @@ export function MySpacePage({
                 ))}
               </div>
               <div className="divide-y divide-gray-100">
-                {pending.length === 0 && <div className="py-5 text-center"><CheckCircle size={16} className="text-green-400 mx-auto mb-1" /><p className="text-xs text-gray-400">All caught up</p></div>}
-                {pending.slice(0,4).map(r => (
+                {pendingApprovals.length === 0 && <div className="py-5 text-center"><CheckCircle size={16} className="text-green-400 mx-auto mb-1" /><p className="text-xs text-gray-400">All caught up</p></div>}
+                {pendingApprovals.slice(0,4).map(r => (
                   <div key={r.id} className="flex items-center gap-3 px-4 py-2 hover:bg-gray-50">
-                    <Avt initials={r.employee.split(" ").map((n:string) => n[0]).join("")} color={EMP_COLORS[parseInt(r.id.slice(-1)) % EMP_COLORS.length]} size="sm" />
+                    <Avt initials={r.employee.split(" ").map((n:string) => n[0]).join("")} color={EMP_COLORS[parseInt(r.rawId.slice(-1), 16) % EMP_COLORS.length || 0]} size="sm" />
                     <div className="flex-1 min-w-0">
                       <p className="text-xs font-medium text-gray-800 truncate">{r.employee}</p>
-                      <p className="text-[10px] text-gray-500">{r.type} · {r.days}d · {fmtDate(r.from)}</p>
+                      <p className="text-[10px] text-gray-500">{r.type} · {r.days} · {r.dateRange}</p>
                     </div>
                     <div className="flex gap-1.5">
-                      <button onClick={() => setApproveModalId(r.id)} className="px-2.5 py-1 bg-green-50 text-green-700 rounded-lg text-xs font-semibold hover:bg-green-100 flex items-center gap-1"><CheckCircle size={10} />Approve</button>
-                      <button onClick={() => setRejectModalId(r.id)}  className="px-2.5 py-1 bg-red-50 text-red-600 rounded-lg text-xs font-semibold hover:bg-red-100 flex items-center gap-1"><X size={10} />Reject</button>
+                      <button onClick={() => handleApproveApprovalItem(r)} className="px-2.5 py-1 bg-green-50 text-green-700 rounded-lg text-xs font-semibold hover:bg-green-100 flex items-center gap-1"><CheckCircle size={10} />Approve</button>
+                      <button onClick={() => setAppRejectId(r.id)}  className="px-2.5 py-1 bg-red-50 text-red-600 rounded-lg text-xs font-semibold hover:bg-red-100 flex items-center gap-1"><X size={10} />Reject</button>
                     </div>
                   </div>
                 ))}
@@ -1932,20 +2488,12 @@ export function MySpacePage({
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
-                  <button onClick={() => setTab("Tasks")} className="text-xs text-[#5C5CFF] hover:underline font-medium">View all →</button>
-                  <button onClick={() => setShowNewTask(v => !v)} className="inline-flex items-center gap-1 px-2 py-1 bg-[#5C5CFF] text-white text-xs font-medium rounded-lg hover:bg-[#4A4AE0]"><Plus size={11} />Create</button>
+                  <button onClick={() => navigate("tasks")} className="text-xs text-[#5C5CFF] hover:underline font-medium">View all →</button>
                 </div>
               </div>
-              {showNewTask && (
-                <div className="px-4 py-2 border-b border-gray-100 bg-gray-50 flex items-center gap-2">
-                  <input autoFocus value={newTaskTitle} onChange={e => setNewTaskTitle(e.target.value)} onKeyDown={e => e.key === "Enter" && createTask()} placeholder="Task title… (Enter to save)" className="flex-1 px-3 py-1.5 text-xs border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#5C5CFF] bg-white" />
-                  <button onClick={createTask} className="px-3 py-1.5 bg-[#5C5CFF] text-white text-xs font-medium rounded-lg">Save</button>
-                  <button onClick={() => { setShowNewTask(false); setNewTaskTitle(""); }} className="p-1.5 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-200"><X size={14} /></button>
-                </div>
-              )}
               <div className="divide-y divide-gray-100">
                 {myTasks.slice(0,6).map(t => (
-                  <div key={t.id} onClick={() => { setTab("Tasks"); setActiveTaskId(t.id); }} className={cn("flex items-center gap-3 px-4 py-2 hover:bg-gray-50 cursor-pointer", t.done && "opacity-50")}>
+                  <div key={t.id} onClick={() => { navigate("tasks"); setActiveTaskId(t.id); }} className={cn("flex items-center gap-3 px-4 py-2 hover:bg-gray-50 cursor-pointer", t.done && "opacity-50")}>
                     <input type="checkbox" checked={t.done} onChange={e => { e.stopPropagation(); toggleTask(t.id); }} onClick={e => e.stopPropagation()} className="rounded border-gray-300 accent-[#5C5CFF] flex-shrink-0" />
                     <div className="flex-1 min-w-0">
                       <span className={cn("text-xs text-gray-800", t.done && "line-through text-gray-400")}>{t.title}</span>
@@ -1965,20 +2513,14 @@ export function MySpacePage({
             <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
               <div className="flex items-center justify-between px-5 py-3.5 border-b border-gray-100"><h3 className="text-sm font-semibold text-gray-800">Recent Activities</h3></div>
               <div className="divide-y divide-gray-100">
-                {[
-                  { icon:UserPlus,      color:"#5C5CFF", text:"Yuki Tanaka joined the Engineering team",                       time:"9:00 AM"  },
-                  { icon:CalendarDays,  color:"#F59E0B", text:"Sarah Mitchell applied for 5 days annual leave",               time:"8:32 AM"  },
-                  { icon:CheckCircle,   color:"#22C55E", text:"Marcus Johnson – attendance regularization approved",           time:"Yesterday" },
-                  { icon:AlertCircle,   color:"#EF4444", text:"Mei Lin Chen has a missing check-out — requires review",       time:"Yesterday" },
-                  { icon:GitBranch,     color:"#8B5CF6", text:"Operations department head updated by Jennifer Walsh",         time:"Yesterday" },
-                  { icon:Shield,        color:"#06B6D4", text:"Manager role assigned to Marcus Johnson",                      time:"Jun 30"   },
-                ].map((a,i) => (
+                {recentActivities?.map((a: any,i: number) => (
                   <div key={i} className="flex items-center gap-3 px-5 py-3 hover:bg-gray-50 cursor-pointer">
                     <div className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0" style={{ backgroundColor:a.color+"18" }}><a.icon size={13} style={{ color:a.color }} /></div>
                     <p className="text-xs text-gray-700 flex-1 leading-snug">{a.text}</p>
                     <span className="text-[10px] text-gray-400">{a.time}</span>
                   </div>
                 ))}
+                {recentActivities.length === 0 && <div className="py-5 text-center"><p className="text-xs text-gray-400">No recent activities</p></div>}
               </div>
             </div>
 
@@ -1998,8 +2540,8 @@ export function MySpacePage({
                   <Pin size={12} className="text-amber-500 mt-0.5 flex-shrink-0"/>
                   <div className="flex-1 min-w-0">
                     <span className="text-[9px] font-semibold bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded uppercase mr-2">Pinned</span>
-                    <span className="text-xs font-semibold text-gray-900">{a.title}</span>
-                    <p className="text-[10px] text-gray-500 truncate mt-0.5">{a.body.split("\n")[0]}</p>
+                    <span className="text-xs font-semibold text-gray-900">{a.title || "Announcement"}</span>
+                    <p className="text-[10px] text-gray-500 truncate mt-0.5">{(a.body || "").split("\n")[0]}</p>
                   </div>
                   <span className="text-[10px] text-gray-400 flex-shrink-0">{a.timeAgo}</span>
                 </div>
@@ -2015,14 +2557,15 @@ export function MySpacePage({
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-1.5 mb-0.5">
                         {!annReadIds.includes(a.id)&&<span className="w-1.5 h-1.5 bg-[#5C5CFF] rounded-full flex-shrink-0"/>}
-                        <span className="text-xs font-semibold text-gray-900 truncate">{a.title}</span>
+                        <span className="text-xs font-semibold text-gray-900 truncate">{a.title || "Announcement"}</span>
                       </div>
-                      <p className="text-[10px] text-gray-500 truncate">{a.body.split("\n")[0]}</p>
-                      <p className="text-[9px] text-gray-400 mt-0.5">{a.author} · {a.timeAgo}</p>
+                      <p className="text-[10px] text-gray-500 truncate">{(a.body || "").split("\n")[0]}</p>
+                      <p className="text-[9px] text-gray-400 mt-0.5">{a.author || "Admin"} · {a.timeAgo}</p>
                     </div>
-                    <span className="text-[10px] text-gray-400 flex-shrink-0">{a.category}</span>
+                    <span className="text-[10px] text-gray-400 flex-shrink-0">{a.category || "General"}</span>
                   </div>
                 ))}
+                {ANNOUNCEMENTS_DATA.length === 0 && <div className="py-5 text-center"><p className="text-xs text-gray-400">No recent announcements</p></div>}
               </div>
             </div>
 
@@ -2253,8 +2796,8 @@ export function MySpacePage({
               )}
               {/* Right actions */}
               <div className="ml-auto flex items-center gap-2">
-                {/* Filter — My Space only on Summary; always on My Team */}
-                {(attSection==="My Team"||(attSection==="My Space"&&attView==="summary"))&&(
+                {/* Filter — My Space only on Summary/Timeline; always on My Team */}
+                {(attSection==="My Team"||(attSection==="My Space"&&(attView==="summary" || attView==="timeline")))&&(
                   <div className="relative">
                     <button onClick={()=>{ setShowAttFilter(v=>!v); setShowAttExport(false); }} className={cn("flex items-center gap-1.5 px-2.5 py-1.5 text-xs border rounded-lg transition-colors",showAttFilter?"border-[#5C5CFF] bg-[#EEF2FF] text-[#5C5CFF]":"border-gray-200 text-gray-600 hover:bg-gray-50")}>
                       <Sliders size={12}/>Filters
@@ -2306,12 +2849,12 @@ export function MySpacePage({
                         <div>
                           <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-1.5">Date Range</p>
                           <div className="flex gap-2">
-                            <input type="date" className="flex-1 px-2 py-1.5 text-xs border border-gray-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-[#5C5CFF]"/>
-                            <input type="date" className="flex-1 px-2 py-1.5 text-xs border border-gray-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-[#5C5CFF]"/>
+                            <input type="date" value={attFStartDate} onChange={e=>setAttFStartDate(e.target.value)} className="flex-1 px-2 py-1.5 text-xs border border-gray-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-[#5C5CFF]"/>
+                            <input type="date" value={attFEndDate} onChange={e=>setAttFEndDate(e.target.value)} className="flex-1 px-2 py-1.5 text-xs border border-gray-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-[#5C5CFF]"/>
                           </div>
                         </div>
                         <div className="pt-2 border-t border-gray-100 flex gap-2">
-                          <button onClick={()=>{setAttFMonth("All");setAttFQuarter("All");setAttFDept("All");setAttFShift("All");setTeamDeptFilter("All");setTeamStatusFilter("All");setShowAttFilter(false);}} className="flex-1 px-3 py-1.5 text-xs border border-gray-200 rounded-lg text-gray-600 hover:bg-gray-50">Reset</button>
+                          <button onClick={()=>{setAttFMonth("All");setAttFQuarter("All");setAttFDept("All");setAttFShift("All");setTeamDeptFilter("All");setTeamStatusFilter("All");setAttFStartDate("");setAttFEndDate("");setShowAttFilter(false);}} className="flex-1 px-3 py-1.5 text-xs border border-gray-200 rounded-lg text-gray-600 hover:bg-gray-50">Reset</button>
                           <button onClick={()=>setShowAttFilter(false)} className="flex-1 px-3 py-1.5 text-xs bg-[#5C5CFF] text-white rounded-lg hover:bg-[#4A4AE0]">Apply</button>
                         </div>
                       </div>
@@ -2324,9 +2867,23 @@ export function MySpacePage({
                     <Download size={12}/>Export
                   </button>
                   {showAttExport&&(
-                    <div className="absolute top-full right-0 mt-1 w-40 bg-white border border-gray-200 rounded-xl shadow-lg z-40 py-1">
+                    <div className="absolute top-full right-0 mt-1 w-40 bg-white border border-gray-200 rounded-xl shadow-lg z-40 py-1 font-sans">
                       {["Excel (.xlsx)","CSV (.csv)","PDF Report"].map(fmt=>(
-                        <button key={fmt} onClick={()=>setShowAttExport(false)} className="w-full text-left px-3 py-2 text-xs text-gray-700 hover:bg-gray-50 flex items-center gap-2">
+                        <button key={fmt} 
+                          onClick={()=>{
+                            setShowAttExport(false);
+                            if (fmt.includes("CSV") || fmt.includes("Excel")) {
+                              if (attView === "issues") {
+                                exportIssuesToCSV(filteredVisibleIssues, "attendance_issues_report.csv");
+                              } else {
+                                exportToCSV(filteredAttTimeline, "attendance_report.csv");
+                              }
+                            } else if (fmt.includes("PDF")) {
+                              window.print();
+                            }
+                          }} 
+                          className="w-full text-left px-3 py-2 text-xs text-gray-700 hover:bg-gray-50 flex items-center gap-2"
+                        >
                           <Download size={10} className="text-gray-400"/>{fmt}
                         </button>
                       ))}
@@ -2369,7 +2926,26 @@ export function MySpacePage({
                     <div className="h-8 w-px bg-gray-100"/>
                     <div className="text-xs"><span className="text-gray-400">Expected out</span><div className="font-mono font-semibold text-gray-800 mt-0.5">06:00 PM</div></div>
                   </>}
-                  <div className="ml-auto"><span className={cn("text-[10px] font-semibold px-2 py-1 rounded-full", checkedIn?"bg-green-50 text-green-700":"bg-gray-100 text-gray-500")}>{checkedIn?"On Time · Today":"Not Checked In"}</span></div>
+                  <div className="ml-auto">
+                    <span className={cn(
+                      "text-[10px] font-semibold px-2 py-1 rounded-full",
+                      !checkedIn
+                        ? "bg-gray-100 text-gray-500"
+                        : todayAtt?.status === "Late"
+                        ? "bg-amber-50 text-amber-700"
+                        : todayAtt?.status === "WFH"
+                        ? "bg-blue-50 text-blue-700"
+                        : "bg-green-50 text-green-700"
+                    )}>
+                      {!checkedIn
+                        ? "Not Checked In"
+                        : todayAtt?.status === "Late"
+                        ? "Late · Today"
+                        : todayAtt?.status === "WFH"
+                        ? "WFH · Today"
+                        : "On Time · Today"}
+                    </span>
+                  </div>
                 </div>
 
                 {/* KPI Cards — period-aware with real-time data */}
@@ -2401,13 +2977,13 @@ export function MySpacePage({
                   </div>
                   <div className="px-4 py-4">
                     <ResponsiveContainer width="100%" height={170}>
-                      <RBarChart data={attPeriod==="Yearly"?ATT_YEAR_DATA.map(d=>({day:d.month,h:parseFloat((d.rate/10).toFixed(1)),s:"Present"})):realMonthlyChartData} barSize={attPeriod==="Monthly"?14:attPeriod==="Yearly"?24:36} margin={{top:4,right:4,left:-20,bottom:0}}>
+                      <RBarChart data={attPeriod==="Yearly"?realYearlyChartData:realMonthlyChartData} barSize={attPeriod==="Monthly"?14:attPeriod==="Yearly"?24:36} margin={{top:4,right:4,left:-20,bottom:0}}>
                         <CartesianGrid key="cg-att" strokeDasharray="3 3" vertical={false} stroke="#f3f4f6"/>
                         <XAxis key="xaxis-att" dataKey="day" tick={{fontSize:9,fill:"#9CA3AF"}} axisLine={false} tickLine={false}/>
                         <YAxis key="yaxis-att" domain={[0,12]} tick={{fontSize:9,fill:"#9CA3AF"}} axisLine={false} tickLine={false} tickFormatter={(v:number)=>v===0?"":v+"h"}/>
                         <Tooltip key="tip-att" formatter={(v:number)=>[`${v}h`,"Hours"]} contentStyle={{fontSize:11,borderRadius:8,border:"1px solid #e5e7eb"}}/>
                         <Bar key="bar-att" dataKey="h" radius={[3,3,0,0]}>
-                          {(attPeriod==="Yearly"?ATT_YEAR_DATA.map(d=>({day:d.month,h:parseFloat((d.rate/10).toFixed(1)),s:"Present"})):realMonthlyChartData).map((d,i)=><Cell key={`att-${i}`} fill={barFill(d.s,d.h)}/>)}
+                          {(attPeriod==="Yearly"?realYearlyChartData:realMonthlyChartData).map((d,i)=><Cell key={`att-${i}`} fill={barFill(d.s,d.h)}/>)}
                         </Bar>
                       </RBarChart>
                     </ResponsiveContainer>
@@ -2437,7 +3013,7 @@ export function MySpacePage({
                     <button onClick={() => setAttView("timeline")} className="text-xs text-[#5C5CFF] hover:underline">Full history →</button>
                   </div>
                   <div className="divide-y divide-gray-100">
-                    {realAttTimeline.filter(r=>r.status!=="Weekend").slice(0,7).map((r,i)=>(
+                    {filteredAttTimeline.filter(r=>r.status!=="Weekend").slice(0,7).map((r,i)=>(
                       <div key={i} className="px-5 py-3 flex items-center gap-4">
                         <div className={cn("w-2 h-2 rounded-full flex-shrink-0",r.status==="Present"?"bg-green-400":r.status==="Late"?"bg-amber-400":r.status==="WFH"?"bg-blue-400":r.status==="Leave"?"bg-purple-400":"bg-gray-300")}/>
                         <div className="flex-1 min-w-0">
@@ -2465,10 +3041,10 @@ export function MySpacePage({
                 <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
                   <div className="px-5 py-3.5 border-b border-gray-100 flex items-center justify-between">
                     <div><h3 className="text-sm font-semibold text-gray-800">Attendance History</h3><p className="text-[10px] text-gray-400 mt-0.5">Real-time Subcollection History</p></div>
-                    <button onClick={()=>setShowAttExport(v=>!v)} className="text-xs text-gray-500 hover:text-[#5C5CFF] flex items-center gap-1"><Download size={12}/>Export</button>
+                    <button onClick={()=>exportToCSV(filteredAttTimeline)} className="text-xs text-gray-500 hover:text-[#5C5CFF] flex items-center gap-1"><Download size={12}/>Export</button>
                   </div>
                   <div className="p-5 space-y-3">
-                    {realAttTimeline.map((r,i) => (
+                    {filteredAttTimeline.map((r,i) => (
                       <div key={i}>
                         <div className="flex items-center gap-3 mb-2">
                           <div className={cn("w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 text-xs font-bold text-white",
@@ -2490,8 +3066,8 @@ export function MySpacePage({
                         {r.status!=="Weekend"&&r.status!=="Leave"&&r.in!=="—"&&(
                           <div className="ml-11 mb-3">
                             <div className="relative h-8 bg-gray-50 rounded-lg overflow-hidden border border-gray-100">
-                              <div className="absolute top-0 bottom-0 bg-[#EEF2FF]" style={{left:"22.2%",right:"22.2%"}}/>
-                              <div className={cn("absolute top-1 bottom-1 rounded",r.wfh?"bg-blue-400":r.late?"bg-amber-400":"bg-green-400")} style={{left:"11%",right:"11%"}}/>
+                              <div className="absolute top-0 bottom-0 bg-[#EEF2FF]" style={r.purpleStyle || {left:"22.2%",right:"22.2%"}}/>
+                              <div className={cn("absolute top-1 bottom-1 rounded",r.wfh?"bg-blue-400":r.late?"bg-amber-400":"bg-green-400")} style={r.actStyle || {left:"11%",right:"11%"}}/>
                             </div>
                             <div className="flex items-center gap-5 mt-2 text-xs">
                               <div><span className="text-gray-400">Check-in </span><span className="font-mono font-semibold text-gray-800">{r.in}</span>{r.late&&<span className="text-[9px] text-amber-600 ml-1">(+18 min)</span>}</div>
@@ -2514,74 +3090,184 @@ export function MySpacePage({
               )}
 
               {/* ══════════════════════════ CALENDAR ══════════════════════════ */}
-              {attView === "calendar" && (
-                <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
-                  <div className="px-5 py-3.5 border-b border-gray-100 flex items-center gap-3 flex-wrap">
-                    <div className="flex gap-1">
-                      {(["month","week"] as const).map(v=>(
-                        <button key={v} onClick={()=>setAttCalView(v)} className={cn("px-3 py-1.5 text-xs font-medium rounded-lg capitalize transition-colors",attCalView===v?"bg-[#EEF2FF] text-[#5C5CFF]":"text-gray-600 hover:bg-gray-100")}>{v==="month"?"Month":"Week"}</button>
-                      ))}
-                    </div>
-                    <div className="flex items-center gap-1.5">
-                      <button className="p-1.5 hover:bg-gray-100 rounded"><ChevronLeft size={14}/></button>
-                      <span className="text-xs font-semibold text-gray-700 w-20 text-center">July 2024</span>
-                      <button className="p-1.5 hover:bg-gray-100 rounded"><ChevronRight size={14}/></button>
-                    </div>
-                    <button className="px-2.5 py-1 text-xs border border-gray-200 text-gray-600 rounded-lg hover:bg-gray-50">Today</button>
-                    <div className="ml-auto flex items-center gap-1.5 flex-wrap">
-                      {ATT_CAL_FILTERS_DEFAULT.map(f=>(
-                        <button key={f} onClick={()=>toggleAttCalFilter(f)} className={cn("text-[10px] px-2 py-0.5 rounded-full border transition-colors",attCalFilters.includes(f)?"bg-[#EEF2FF] border-[#5C5CFF]/30 text-[#5C5CFF]":"border-gray-200 text-gray-400 hover:bg-gray-50")}>{f}</button>
-                      ))}
-                    </div>
-                  </div>
-                  {attCalView==="month"&&(
-                    <div className="p-4">
-                      <div className="grid grid-cols-7 gap-1 mb-2">{["Sun","Mon","Tue","Wed","Thu","Fri","Sat"].map(d=><div key={d} className="text-center text-[10px] font-semibold text-gray-400 py-1">{d}</div>)}</div>
-                      <div className="grid grid-cols-7 gap-1">
-                        {["","","1","2","3","4","5","6","7","8","9","10","11","12","13","14","15","16","17","18","19","20","21","22","23","24","25","26","27","28","29","30","31"].map((d,i)=>{
-                          const isToday=d==="1";const isWeekend=i%7===0||i%7===6;
-                          const isHol=d==="4";const isLeave=["18","19"].includes(d);const isWfh=d==="24";
-                          const rec=ATT_TIMELINE.find(r=>r.date.startsWith(`Jul ${d},`)||r.date.startsWith(`Jun ${d},`));
-                          return (
-                            <div key={i} className={cn("h-14 flex flex-col items-center justify-start pt-1.5 rounded-lg text-xs cursor-pointer transition-colors",
-                              isToday?"bg-[#5C5CFF]":isHol&&d?"bg-red-50":isLeave&&d?"bg-purple-50":isWfh&&d?"bg-blue-50":isWeekend&&d?"bg-gray-50":d?"hover:bg-gray-50":"",!d&&"pointer-events-none")}>
-                              {d&&<span className={cn("text-xs font-semibold",isToday?"text-white":isHol?"text-red-600":isLeave?"text-purple-600":isWfh?"text-blue-600":isWeekend?"text-gray-300":"text-gray-700")}>{d}</span>}
-                              {isHol&&d&&<span className="text-[8px] text-red-500 mt-0.5">Holiday</span>}
-                              {isLeave&&d&&<span className="text-[8px] text-purple-500 mt-0.5">Leave</span>}
-                              {isWfh&&d&&<span className="text-[8px] text-blue-500 mt-0.5">WFH</span>}
-                              {isWeekend&&d&&<span className="text-[8px] text-gray-300 mt-0.5">Off</span>}
-                              {!isWeekend&&!isHol&&!isLeave&&!isWfh&&d&&!isToday&&<div className={cn("w-1 h-1 rounded-full mt-1",rec?.late?"bg-amber-400":rec?.status==="Present"?"bg-green-400":"bg-gray-200")}/>}
-                            </div>
-                          );
-                        })}
+              {attView === "calendar" && (() => {
+                const weekDates = [];
+                for (let i = 0; i < 7; i++) {
+                  const wd = new Date(currentWeekStart);
+                  wd.setDate(currentWeekStart.getDate() + i);
+                  weekDates.push(wd);
+                }
+                return (
+                  <div className="bg-white border border-gray-200 rounded-xl overflow-hidden font-sans">
+                    <div className="px-5 py-3.5 border-b border-gray-100 flex items-center gap-3 flex-wrap">
+                      <div className="flex gap-1">
+                        {(["month","week"] as const).map(v=>(
+                          <button key={v} onClick={()=>setAttCalView(v)} className={cn("px-3 py-1.5 text-xs font-medium rounded-lg capitalize transition-colors",attCalView===v?"bg-[#EEF2FF] text-[#5C5CFF]":"text-gray-600 hover:bg-gray-100")}>{v==="month"?"Month":"Week"}</button>
+                        ))}
                       </div>
-                      <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 mt-4 pt-4 border-t border-gray-100 text-[10px] text-gray-500">
-                        {[["bg-green-400","Present"],["bg-amber-400","Late"],["bg-blue-500","WFH"],["bg-purple-500","Leave"],["bg-red-400","Holiday"],["bg-gray-200","Weekend"]].map(([c,l])=>(
-                          <div key={l} className="flex items-center gap-1.5"><div className={cn("w-2 h-2 rounded-full",c)}/>{l}</div>
+                      <div className="flex items-center gap-1.5">
+                        <button onClick={() => {
+                          if (attCalView === "month") {
+                            if (calMonth === 0) {
+                              setCalMonth(11);
+                              setCalYear(y => y - 1);
+                            } else {
+                              setCalMonth(m => m - 1);
+                            }
+                          } else {
+                            setCurrentWeekStart(prev => {
+                              const newD = new Date(prev);
+                              newD.setDate(newD.getDate() - 7);
+                              return newD;
+                            });
+                          }
+                        }} className="p-1.5 hover:bg-gray-100 rounded"><ChevronLeft size={14}/></button>
+                        <span className="text-xs font-semibold text-gray-700 w-44 text-center select-none">
+                          {attCalView === "month" 
+                            ? new Date(calYear, calMonth).toLocaleDateString("en-US", { month: "long", year: "numeric" })
+                            : `${weekDates[0].toLocaleDateString("en-US", { month: "short", day: "numeric" })} – ${weekDates[6].toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}`
+                          }
+                        </span>
+                        <button onClick={() => {
+                          if (attCalView === "month") {
+                            if (calMonth === 11) {
+                              setCalMonth(0);
+                              setCalYear(y => y + 1);
+                            } else {
+                              setCalMonth(m => m + 1);
+                            }
+                          } else {
+                            setCurrentWeekStart(prev => {
+                              const newD = new Date(prev);
+                              newD.setDate(newD.getDate() + 7);
+                              return newD;
+                            });
+                          }
+                        }} className="p-1.5 hover:bg-gray-100 rounded"><ChevronRight size={14}/></button>
+                      </div>
+                      <button onClick={() => {
+                        if (attCalView === "month") {
+                          setCalMonth(new Date().getMonth());
+                          setCalYear(new Date().getFullYear());
+                        } else {
+                          const d = new Date();
+                          const day = d.getDay();
+                          const diff = d.getDate() - day + (day === 0 ? -6 : 1);
+                          setCurrentWeekStart(new Date(d.setDate(diff)));
+                        }
+                      }} className="px-2.5 py-1 text-xs border border-gray-200 text-gray-600 rounded-lg hover:bg-gray-50">Today</button>
+                      <div className="ml-auto flex items-center gap-1.5 flex-wrap">
+                        {ATT_CAL_FILTERS_DEFAULT.map(f=>(
+                          <button key={f} onClick={()=>toggleAttCalFilter(f)} className={cn("text-[10px] px-2 py-0.5 rounded-full border transition-colors",attCalFilters.includes(f)?"bg-[#EEF2FF] border-[#5C5CFF]/30 text-[#5C5CFF]":"border-gray-200 text-gray-400 hover:bg-gray-50")}>{f}</button>
                         ))}
                       </div>
                     </div>
-                  )}
-                  {attCalView==="week"&&(
-                    <div className="p-4">
-                      <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
-                        <div className="grid grid-cols-8 border-b border-gray-100">
-                          <div className="py-2.5 px-2 border-r border-gray-100"/>
-                          {["Mon Jun 24","Tue Jun 25","Wed Jun 26","Thu Jun 27","Fri Jun 28","Sat Jun 29","Sun Jun 30"].map(d=>(
-                            <div key={d} className="text-center text-[10px] font-medium text-gray-500 py-2.5 border-r border-gray-100 last:border-0">{d}</div>
+                    {attCalView==="month"&&(
+                      <div className="p-4">
+                        <div className="grid grid-cols-7 gap-1 mb-2">{["Sun","Mon","Tue","Wed","Thu","Fri","Sat"].map(d=><div key={d} className="text-center text-[10px] font-semibold text-gray-400 py-1">{d}</div>)}</div>
+                        <div className="grid grid-cols-7 gap-1">
+                          {getDaysInMonth(calYear, calMonth).map((d,i)=>{
+                            if (!d) return <div key={i} className="h-14 pointer-events-none" />;
+                            const isWeekend=i%7===0||i%7===6;
+                            const dateKey = `${calYear}-${String(calMonth + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+                            const rec = filteredAttTimeline.find(r => r.rawDate === dateKey);
+
+                            const isToday = parseInt(d, 10) === new Date().getDate() && calMonth === new Date().getMonth() && calYear === new Date().getFullYear();
+                            const isLeave = rec?.status === "Leave";
+                            const isWfh = rec?.status === "WFH";
+                            const isLate = rec?.late;
+
+                            return (
+                              <div key={i} className={cn("h-14 flex flex-col items-center justify-start pt-1.5 rounded-lg text-xs cursor-pointer transition-colors",
+                                isToday?"bg-[#5C5CFF]":isLeave?"bg-purple-50":isWfh?"bg-blue-50":isWeekend?"bg-gray-50":"hover:bg-gray-50")}>
+                                <span className={cn("text-xs font-semibold",isToday?"text-white":isLeave?"text-purple-600":isWfh?"text-blue-600":isWeekend?"text-gray-300":"text-gray-700")}>{d}</span>
+                                {isLeave&&<span className="text-[8px] text-purple-500 mt-0.5">Leave</span>}
+                                {isWfh&&<span className="text-[8px] text-blue-500 mt-0.5">WFH</span>}
+                                {isWeekend&&<span className="text-[8px] text-gray-300 mt-0.5">Off</span>}
+                                {rec && !isWeekend && !isLeave && !isWfh && (
+                                  <div className={cn("w-1.5 h-1.5 rounded-full mt-1.5", isLate?"bg-amber-400":"bg-green-400")}/>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                        <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 mt-4 pt-4 border-t border-gray-100 text-[10px] text-gray-500">
+                          {[["bg-green-400","Present"],["bg-amber-400","Late"],["bg-blue-500","WFH"],["bg-purple-500","Leave"],["bg-red-400","Holiday"],["bg-gray-200","Weekend"]].map(([c,l])=>(
+                            <div key={l} className="flex items-center gap-1.5"><div className={cn("w-2 h-2 rounded-full",c)}/>{l}</div>
                           ))}
                         </div>
-                        {["09:00","10:00","11:00","12:00","13:00","14:00","15:00","16:00","17:00","18:00"].map(h=>(
-                          <div key={h} className="grid grid-cols-8 border-b border-gray-50 last:border-0">
-                            <div className="text-[10px] text-gray-400 px-2 py-3 border-r border-gray-100 text-right">{h}</div>
-                            {[0,1,2,3,4,5,6].map(day=><div key={day} className={cn("border-r border-gray-50 last:border-0 h-10",day>=5&&"bg-gray-50/50")}/>)}
-                          </div>
-                        ))}
                       </div>
-                    </div>
-                  )}
-                </div>
-              )}
+                    )}
+                    {attCalView==="week"&&(
+                      <div className="p-4">
+                        <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
+                          <div className="grid grid-cols-8 border-b border-gray-100 bg-gray-50/50">
+                            <div className="py-2.5 px-2 border-r border-gray-100"/>
+                            {weekDates.map(d=>(
+                              <div key={d.toISOString()} className="text-center text-[10px] font-semibold text-gray-500 py-2.5 border-r border-gray-100 last:border-0">
+                                {d.toLocaleDateString("en-US", { weekday: 'short', month: 'short', day: 'numeric' })}
+                              </div>
+                            ))}
+                          </div>
+                          <div className="relative">
+                            {["09:00","10:00","11:00","12:00","13:00","14:00","15:00","16:00","17:00","18:00"].map((h)=>(
+                              <div key={h} className="grid grid-cols-8 border-b border-gray-50 last:border-0 animate-fade-in">
+                                <div className="text-[10px] text-gray-400 px-2 py-3 border-r border-gray-100 text-right h-10 select-none bg-gray-50/20">{h}</div>
+                                {[0,1,2,3,4,5,6].map(day=><div key={day} className={cn("border-r border-gray-50 last:border-0 h-10",day>=5&&"bg-gray-50/50")}/>)}
+                              </div>
+                            ))}
+                            
+                            {/* Overlay events column by column */}
+                            <div className="absolute inset-0 grid grid-cols-8 pointer-events-none">
+                              <div />
+                              {[0,1,2,3,4,5,6].map(dayIndex => {
+                                const wd = weekDates[dayIndex];
+                                const dateKey = wd.toISOString().split("T")[0];
+                                const rec = filteredAttTimeline.find(r => r.rawDate === dateKey);
+                                if (!rec || rec.in === "—") return <div key={dayIndex} className="relative h-full" />;
+
+                                const inMin = parseTimeToMinutes(rec.in);
+                                let outMin = parseTimeToMinutes(rec.out);
+                                if (!outMin && rec.in !== "—") {
+                                  outMin = inMin + 540;
+                                }
+                                const startMin = Math.max(540, Math.min(1080, inMin));
+                                const endMin = Math.max(540, Math.min(1080, outMin));
+                                const totalRange = 1080 - 540;
+
+                                const topPercent = ((startMin - 540) / totalRange) * 100;
+                                const heightPercent = Math.max(8, ((endMin - startMin) / totalRange) * 100);
+
+                                return (
+                                  <div key={dayIndex} className="relative h-full pointer-events-none">
+                                    <div
+                                      style={{
+                                        top: `${topPercent}%`,
+                                        height: `${heightPercent}%`,
+                                      }}
+                                      className={cn(
+                                        "absolute left-1 right-1 rounded-lg p-1.5 flex flex-col justify-between text-[9px] font-bold text-white shadow-sm border pointer-events-auto",
+                                        rec.wfh 
+                                          ? "bg-blue-500 border-blue-600" 
+                                          : rec.late 
+                                            ? "bg-amber-500 border-amber-600" 
+                                            : "bg-green-500 border-green-600"
+                                      )}
+                                    >
+                                      <div className="truncate leading-tight">{rec.status}</div>
+                                      <div className="text-[7.5px] opacity-90 truncate font-mono">{rec.in} - {rec.out}</div>
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
 
               {/* analytics + exceptions moved to My Team — removed from My Space */}
               {false && (<>
@@ -2939,41 +3625,51 @@ export function MySpacePage({
                   <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
                     <div className="px-5 py-3 border-b border-gray-100 flex items-center justify-between">
                       <h3 className="text-xs font-semibold text-gray-700">Attendance Issue Requests</h3>
-                      <span className="text-[10px] text-gray-400">{visibleIssues.length} total · {visibleIssues.filter(i=>i.status==="Pending").length} pending</span>
+                      <span className="text-[10px] text-gray-400">{filteredVisibleIssues.length} total · {filteredVisibleIssues.filter(i=>i.status==="Pending").length} pending</span>
                     </div>
                     <div className="divide-y divide-gray-100">
-                      {visibleIssues.map(iss=>(
-                        <div key={iss.id} className="px-5 py-4 flex items-start gap-4 hover:bg-gray-50 transition-colors">
-                          <div className={cn("w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0",
-                            iss.status==="Approved"?"bg-green-50":iss.status==="Rejected"?"bg-red-50":"bg-amber-50")}>
-                            {iss.status==="Approved"?<CheckCircle size={16} className="text-green-500"/>:iss.status==="Rejected"?<XCircle size={16} className="text-red-500"/>:<Clock size={16} className="text-amber-500"/>}
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-start justify-between gap-2 mb-1">
-                              <p className="text-xs font-semibold text-gray-800">{iss.type}</p>
-                              <span className={cn("text-[9px] font-bold px-2 py-0.5 rounded-full flex-shrink-0",
-                                iss.status==="Approved"?"bg-green-50 text-green-600":iss.status==="Rejected"?"bg-red-50 text-red-600":"bg-amber-50 text-amber-600")}>{iss.status}</span>
+                      {filteredVisibleIssues.map(iss=>{
+                        const isCreator = iss.createdBy && String(iss.createdBy).toLowerCase() === userEmail;
+                        const isSuperAdminOrAdmin = userRole === "super_admin" || userRole === "admin";
+                        const rolesArr = Array.isArray(iss.targetRoles) ? iss.targetRoles : [];
+                        const canApprove = !isCreator && (
+                          isSuperAdminOrAdmin || 
+                          (userRole === "hr_admin" && rolesArr.includes("hr_admin")) ||
+                          (userRole === "manager" && rolesArr.includes("manager"))
+                        );
+                        return (
+                          <div key={iss.id} className="px-5 py-4 flex items-start gap-4 hover:bg-gray-50 transition-colors">
+                            <div className={cn("w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0",
+                              iss.status==="Approved"?"bg-green-50":iss.status==="Rejected"?"bg-red-50":"bg-amber-50")}>
+                              {iss.status==="Approved"?<CheckCircle size={16} className="text-green-500"/>:iss.status==="Rejected"?<XCircle size={16} className="text-red-500"/>:<Clock size={16} className="text-amber-500"/>}
                             </div>
-                            <p className="text-[10px] text-gray-600">{iss.reason}</p>
-                            {iss.comment&&<p className="text-[10px] text-gray-400 mt-0.5 italic">"{iss.comment}"</p>}
-                            {iss.createdByName&&<p className="text-[9px] text-indigo-500 mt-0.5">Submitted by {iss.createdByName} ({iss.createdByRole || "User"})</p>}
-                            {iss.requestedCheckIn&&<p className="text-[10px] text-emerald-600 font-medium mt-0.5">Requested Timing: {iss.requestedCheckIn} – {iss.requestedCheckOut || "06:00 PM"}</p>}
-                            {iss.status==="Rejected"&&iss.rejectNote&&(
-                              <div className="mt-1.5 bg-red-50 border border-red-100 rounded-lg px-2.5 py-1.5">
-                                <p className="text-[9px] font-semibold text-red-600 uppercase tracking-wide mb-0.5">Rejection Reason</p>
-                                <p className="text-[10px] text-red-700">{iss.rejectNote}</p>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-start justify-between gap-2 mb-1">
+                                <p className="text-xs font-semibold text-gray-800">{iss.type}</p>
+                                <span className={cn("text-[9px] font-bold px-2 py-0.5 rounded-full flex-shrink-0",
+                                  iss.status==="Approved"?"bg-green-50 text-green-600":iss.status==="Rejected"?"bg-red-50 text-red-600":"bg-amber-50 text-amber-600")}>{iss.status}</span>
+                              </div>
+                              <p className="text-[10px] text-gray-600">{iss.reason}</p>
+                              {iss.comment&&<p className="text-[10px] text-gray-400 mt-0.5 italic">"{iss.comment}"</p>}
+                              {iss.createdByName&&<p className="text-[9px] text-indigo-500 mt-0.5">Submitted by {iss.createdByName} ({iss.createdByRole || "User"})</p>}
+                              {iss.requestedCheckIn&&<p className="text-[10px] text-emerald-600 font-medium mt-0.5">Requested Timing: {iss.requestedCheckIn} – {iss.requestedCheckOut || "06:00 PM"}</p>}
+                              {iss.status==="Rejected"&&iss.rejectNote&&(
+                                <div className="mt-1.5 bg-red-50 border border-red-100 rounded-lg px-2.5 py-1.5">
+                                  <p className="text-[9px] font-semibold text-red-600 uppercase tracking-wide mb-0.5">Rejection Reason</p>
+                                  <p className="text-[10px] text-red-700">{iss.rejectNote}</p>
+                                </div>
+                              )}
+                              <p className="text-[9px] text-gray-400 mt-1.5">Submitted {iss.submittedOn} · Issue date: {iss.date}</p>
+                            </div>
+                            {iss.status==="Pending" && canApprove && (
+                              <div className="flex gap-1 flex-shrink-0">
+                                <button onClick={()=>confirmIssueApprove(iss.id)} className="px-2.5 py-1.5 bg-green-50 border border-green-200 text-green-700 text-[10px] font-medium rounded-lg hover:bg-green-100">Approve</button>
+                                <button onClick={()=>setIssueRejectId(iss.id)} className="px-2.5 py-1.5 bg-red-50 border border-red-200 text-red-700 text-[10px] font-medium rounded-lg hover:bg-red-100">Reject</button>
                               </div>
                             )}
-                            <p className="text-[9px] text-gray-400 mt-1.5">Submitted {iss.submittedOn} · Issue date: {iss.date}</p>
                           </div>
-                          {iss.status==="Pending"&&(
-                            <div className="flex gap-1 flex-shrink-0">
-                              <button onClick={()=>confirmIssueApprove(iss.id)} className="px-2.5 py-1.5 bg-green-50 border border-green-200 text-green-700 text-[10px] font-medium rounded-lg hover:bg-green-100">Approve</button>
-                              <button onClick={()=>setIssueRejectId(iss.id)} className="px-2.5 py-1.5 bg-red-50 border border-red-200 text-red-700 text-[10px] font-medium rounded-lg hover:bg-red-100">Reject</button>
-                            </div>
-                          )}
-                        </div>
-                      ))}
+                        );
+                      })}
                       {attIssues.length===0&&(
                         <div className="py-12 text-center"><AlertCircle size={24} className="text-gray-200 mx-auto mb-2"/><p className="text-sm text-gray-400">No issue requests submitted yet</p></div>
                       )}
@@ -3753,7 +4449,7 @@ export function MySpacePage({
                     <h3 className="text-xs font-semibold text-gray-700 mb-3 text-center">Leave Distribution</h3>
                     <ResponsiveContainer width="100%" height={180}>
                       <PieChart>
-                        <Pie key="pie-status" data={realLeaveTypeDist} cx="50%" cy="50%" outerRadius={72} dataKey="value" paddingAngle={2} label={({name,percent})=>`${name.split(" ")[0]} ${(percent*100).toFixed(0)}%`} labelLine={false}>
+                        <Pie key="pie-status" data={realLeaveTypeDist} cx="50%" cy="50%" outerRadius={72} dataKey="value" paddingAngle={2} label={({name,percent})=>percent>0?`${name.split(" ")[0]} ${(percent*100).toFixed(0)}%`:""} labelLine={false}>
                           {realLeaveTypeDist.map((e,i)=><Cell key={`sc-${i}`} fill={e.color}/>)}
                         </Pie>
                         <Tooltip key="tip-pie-status" formatter={(v:number)=>[`${v} days`,"Days"]} contentStyle={{fontSize:11,borderRadius:8,border:"1px solid #e5e7eb"}}/>
@@ -4063,7 +4759,14 @@ export function MySpacePage({
               <div className="space-y-0.5">
                 {GLOBAL_CAL_FILTERS_DEF.map(f => (
                   <label key={f.label} className="flex items-center gap-2.5 px-2 py-1.5 rounded-lg hover:bg-gray-50 cursor-pointer">
-                    <div onClick={() => toggleGlobalFilter(f.label)} className={cn("w-4 h-4 rounded flex items-center justify-center border-2 transition-colors flex-shrink-0", globalCalFilters.includes(f.label)?"border-transparent":"border-gray-300")} style={globalCalFilters.includes(f.label)?{backgroundColor:f.color}:{}}>
+                    <div 
+                      onClick={() => toggleGlobalFilter(f.label)} 
+                      className={cn("w-4 h-4 rounded flex items-center justify-center border-2 transition-colors flex-shrink-0")}
+                      style={{
+                        borderColor: f.color,
+                        backgroundColor: globalCalFilters.includes(f.label) ? f.color : "transparent"
+                      }}
+                    >
                       {globalCalFilters.includes(f.label) && <Check size={10} className="text-white" />}
                     </div>
                     <span className="text-xs text-gray-700">{f.label}</span>
@@ -4130,30 +4833,83 @@ export function MySpacePage({
                     </div>
                   </div>
                 )}
-                {globalCalView === "week" && (
-                  <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-                    <div className="grid grid-cols-8 border-b border-gray-100">
-                      <div className="py-2.5 px-2 border-r border-gray-100" />
-                      {["Sun","Mon","Tue","Wed","Thu","Fri","Sat"].map(d => (
-                        <div key={d} className="text-center text-[10px] font-medium text-gray-500 py-2.5 border-r border-gray-100 last:border-0">{d}</div>
-                      ))}
-                    </div>
-                    {["08:00","09:00","10:00","11:00","12:00","13:00","14:00","15:00","16:00","17:00","18:00"].map(hour => (
-                      <div key={hour} className="grid grid-cols-8 border-b border-gray-50 last:border-0">
-                        <div className="text-[10px] text-gray-400 px-2 py-3 border-r border-gray-100 text-right">{hour}</div>
-                        {[0,1,2,3,4,5,6].map(day => <div key={day} className={cn("border-r border-gray-50 last:border-0 h-10 cursor-pointer hover:bg-gray-50/80", day===0||day===6?"bg-gray-50/50":"")} />)}
-                      </div>
-                    ))}
-                    <div className="px-4 py-2.5 border-t border-gray-100 bg-gray-50/50">
-                      <p className="text-[10px] font-semibold text-gray-400 mb-2">Events this month</p>
-                      <div className="flex flex-wrap gap-1.5">
-                        {currentMonthGlobalEvents.slice(0, 10).map(ev => (
-                          <div key={ev.id} className="text-[9px] font-medium px-2 py-1 rounded-full text-white cursor-pointer hover:opacity-90" style={{ backgroundColor:ev.color }}>Day {ev.day} · {ev.label}</div>
+                {globalCalView === "week" && (() => {
+                  const weekDates = [];
+                  const day = globalCalDate.getDay();
+                  const sunday = new Date(globalCalDate);
+                  sunday.setDate(globalCalDate.getDate() - day);
+                  for (let i = 0; i < 7; i++) {
+                    const wd = new Date(sunday);
+                    wd.setDate(sunday.getDate() + i);
+                    weekDates.push(wd);
+                  }
+                  return (
+                    <div className="bg-white rounded-xl border border-gray-200 overflow-hidden font-sans">
+                      <div className="grid grid-cols-8 border-b border-gray-100 bg-gray-50/50">
+                        <div className="py-2.5 px-2 border-r border-gray-100" />
+                        {weekDates.map(d => (
+                          <div key={d.toISOString()} className="text-center text-[10px] font-semibold text-gray-500 py-2.5 border-r border-gray-100 last:border-0">
+                            {d.toLocaleDateString("en-US", { weekday: 'short', month: 'short', day: 'numeric' })}
+                          </div>
                         ))}
                       </div>
+                      <div className="relative">
+                        {["08:00","09:00","10:00","11:00","12:00","13:00","14:00","15:00","16:00","17:00","18:00"].map(hour => (
+                          <div key={hour} className="grid grid-cols-8 border-b border-gray-50 last:border-0">
+                            <div className="text-[10px] text-gray-400 px-2 py-3 border-r border-gray-100 text-right h-10 select-none bg-gray-50/20">{hour}</div>
+                            {[0,1,2,3,4,5,6].map(day => <div key={day} className={cn("border-r border-gray-50 last:border-0 h-10", day===0||day===6?"bg-gray-50/50":"")} />)}
+                          </div>
+                        ))}
+
+                        {/* Overlay weekly events column by column */}
+                        <div className="absolute inset-0 grid grid-cols-8 pointer-events-none">
+                          <div />
+                          {[0,1,2,3,4,5,6].map(dayIndex => {
+                            const wd = weekDates[dayIndex];
+                            const dateKey = wd.toISOString().split("T")[0];
+                            const dayEvents = realGlobalEvents.filter(e => e.dateStr === dateKey && globalCalFilters.includes(e.type));
+                            if (dayEvents.length === 0) return <div key={dayIndex} className="relative h-full" />;
+
+                            return (
+                              <div key={dayIndex} className="relative h-full pointer-events-none">
+                                {dayEvents.map((ev, index) => {
+                                  const { start, end } = getEventTiming(ev);
+                                  const startMin = Math.max(480, Math.min(1080, start));
+                                  const endMin = Math.max(480, Math.min(1080, end));
+                                  const totalRange = 1080 - 480;
+
+                                  const topPercent = ((startMin - 480) / totalRange) * 100;
+                                  const heightPercent = Math.max(6, ((endMin - startMin) / totalRange) * 100);
+
+                                  const colWidthPercent = 100 / dayEvents.length;
+                                  const leftPercent = index * colWidthPercent;
+
+                                  return (
+                                    <div
+                                      key={ev.id}
+                                      style={{
+                                        top: `${topPercent}%`,
+                                        height: `${heightPercent}%`,
+                                        left: `${leftPercent}%`,
+                                        width: `${colWidthPercent}%`,
+                                        backgroundColor: ev.color,
+                                        borderColor: ev.color,
+                                      }}
+                                      className="absolute rounded p-1 flex flex-col justify-between text-[8px] font-bold text-white shadow-sm border overflow-hidden pointer-events-auto cursor-pointer hover:opacity-90 transition-opacity"
+                                      title={ev.label}
+                                    >
+                                      <div className="truncate leading-tight">{ev.label}</div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
                     </div>
-                  </div>
-                )}
+                  );
+                })()}
                 {globalCalView === "list" && (
                   <div className="bg-white rounded-xl border border-gray-200 overflow-hidden divide-y divide-gray-100">
                     {currentMonthGlobalEvents.sort((a,b)=>a.day-b.day).map(ev=>(
@@ -4459,17 +5215,45 @@ export function MySpacePage({
               <div>
                 <p className="text-[10px] text-gray-400 uppercase tracking-wide font-bold">Check-in Coordinates</p>
                 <p className="text-xs font-mono font-medium text-gray-700 mt-0.5">
-                  {todayAtt?.coordinates ? `${todayAtt.coordinates.lat.toFixed(4)}° N, ${todayAtt.coordinates.lng.toFixed(4)}° W` : "Location not available"}
+                  {todayAtt?.coordinates ? (
+                    `${Math.abs(todayAtt.coordinates.lat).toFixed(4)}° ${todayAtt.coordinates.lat >= 0 ? "N" : "S"}, ${Math.abs(todayAtt.coordinates.lng).toFixed(4)}° ${todayAtt.coordinates.lng >= 0 ? "E" : "W"}`
+                  ) : "Location not available"}
                 </p>
                 <p className="text-[10px] text-gray-400 mt-0.5">
-                  {todayAtt?.coordinates && todayAtt?.orgCoordinates ? `Offset: ${Math.round(getDistance(todayAtt.coordinates.lat, todayAtt.coordinates.lng, todayAtt.orgCoordinates.lat, todayAtt.orgCoordinates.lng))} meters from office center` : ""}
+                  {(() => {
+                    const uLat = todayAtt?.coordinates?.lat;
+                    const uLng = todayAtt?.coordinates?.lng;
+                    let oLat = todayAtt?.orgCoordinates?.lat;
+                    let oLng = todayAtt?.orgCoordinates?.lng;
+                    if (oLat === 40.7485 && Math.abs(oLng + 73.9856) < 0.001) {
+                      if (orgData?.latitude && orgData?.longitude) {
+                        oLat = orgData.latitude;
+                        oLng = orgData.longitude;
+                      }
+                    }
+                    if (uLat && uLng && oLat && oLng) {
+                      return `Offset: ${Math.round(getDistance(uLat, uLng, oLat, oLng))} meters from office center`;
+                    }
+                    return "";
+                  })()}
                 </p>
               </div>
 
               <div className="h-px bg-gray-100" />
 
               {(() => {
-                const isOutside = todayAtt?.coordinates && todayAtt?.orgCoordinates ? getDistance(todayAtt.coordinates.lat, todayAtt.coordinates.lng, todayAtt.orgCoordinates.lat, todayAtt.orgCoordinates.lng) > (todayAtt.orgRadius || 200) : false;
+                const uLat = todayAtt?.coordinates?.lat;
+                const uLng = todayAtt?.coordinates?.lng;
+                let oLat = todayAtt?.orgCoordinates?.lat;
+                let oLng = todayAtt?.orgCoordinates?.lng;
+                if (oLat === 40.7485 && Math.abs(oLng + 73.9856) < 0.001) {
+                  if (orgData?.latitude && orgData?.longitude) {
+                    oLat = orgData.latitude;
+                    oLng = orgData.longitude;
+                  }
+                }
+                const radius = todayAtt?.orgRadius || orgData?.geofenceRadius || 200;
+                const isOutside = uLat && uLng && oLat && oLng ? getDistance(uLat, uLng, oLat, oLng) > radius : false;
                 return (
                   <div>
                     <p className="text-[10px] text-gray-400 uppercase tracking-wide font-bold mb-1">Geo-fence Validation Status</p>
@@ -4490,21 +5274,39 @@ export function MySpacePage({
             {/* Right side Map */}
             <div className="col-span-3 flex flex-col justify-between">
               <div className="w-full aspect-[4/3] relative">
-                {todayAtt?.coordinates && todayAtt?.orgCoordinates ? (
-                  <GeoMap 
-                    userLat={todayAtt.coordinates.lat} 
-                    userLng={todayAtt.coordinates.lng} 
-                    orgLat={todayAtt.orgCoordinates.lat} 
-                    orgLng={todayAtt.orgCoordinates.lng} 
-                    radius={todayAtt.orgRadius}
-                    orgName={todayAtt.orgName}
-                    isInside={true}
-                  />
-                ) : (
-                  <div className="w-full h-full bg-slate-50 flex items-center justify-center text-xs text-gray-500 rounded-xl border border-gray-200 shadow-inner">
-                    <p>No location data available for this check-in.</p>
-                  </div>
-                )}
+                {(() => {
+                  const uLat = todayAtt?.coordinates?.lat;
+                  const uLng = todayAtt?.coordinates?.lng;
+                  let oLat = todayAtt?.orgCoordinates?.lat;
+                  let oLng = todayAtt?.orgCoordinates?.lng;
+                  if (oLat === 40.7485 && Math.abs(oLng + 73.9856) < 0.001) {
+                    if (orgData?.latitude && orgData?.longitude) {
+                      oLat = orgData.latitude;
+                      oLng = orgData.longitude;
+                    }
+                  }
+                  const radius = todayAtt?.orgRadius || orgData?.geofenceRadius || 200;
+                  const orgName = todayAtt?.orgName || orgData?.name || "Office HQ";
+
+                  if (uLat && uLng && oLat && oLng) {
+                    return (
+                      <GeoMap 
+                        userLat={uLat} 
+                        userLng={uLng} 
+                        orgLat={oLat} 
+                        orgLng={oLng} 
+                        radius={radius}
+                        orgName={orgName}
+                        isInside={! (getDistance(uLat, uLng, oLat, oLng) > radius)}
+                      />
+                    );
+                  }
+                  return (
+                    <div className="w-full h-full bg-slate-50 flex items-center justify-center text-xs text-gray-500 rounded-xl border border-gray-200 shadow-inner">
+                      <p>No location data available for this check-in.</p>
+                    </div>
+                  );
+                })()}
               </div>
               <div className="text-[10px] text-gray-400 text-center mt-2">
                 Real-time GPS geofencing verification via Google Maps.

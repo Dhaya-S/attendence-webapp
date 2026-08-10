@@ -21,7 +21,7 @@ import { DOCUMENTS_LIST } from "@/modules/documents/data/documents-list";
 import { EMP_COLORS } from "@/shared/constants/colors";
 import { Avt, StatusBadge, Btn, KPICard, Modal, TabBar, InputField, SelectField } from "@/shared/components";
 import { db, auth } from "@/shared/utils/firebase";
-import { doc, getDoc, setDoc, collection, onSnapshot, addDoc } from "firebase/firestore";
+import { doc, getDoc, setDoc, collection, onSnapshot, addDoc, deleteDoc } from "firebase/firestore";
 import { useAuth } from "@/shared/context/AuthContext";
 import { AddEmployeePage } from "./add-employee-page";
 
@@ -1318,8 +1318,70 @@ export function OrganizationPage({
   const [opsView, setOpsView] = useState<"list"|"calendar">("list");
   const [showCreateShift, setShowCreateShift] = useState(false);
   const [showCreateHoliday, setShowCreateHoliday] = useState(false);
+  const [newHolidayName, setNewHolidayName] = useState("");
+  const [newHolidayDate, setNewHolidayDate] = useState("");
+  const [newHolidayType, setNewHolidayType] = useState("National");
+  const [newHolidayAppliesTo, setNewHolidayAppliesTo] = useState("All Branches");
+  const [newHolidayRecurring, setNewHolidayRecurring] = useState(false);
+
+  const [holCalMonth, setHolCalMonth] = useState(() => new Date().getMonth());
+  const [holCalYear, setHolCalYear] = useState(() => new Date().getFullYear());
   const [showCreateBranch, setShowCreateBranch] = useState(false);
   const [activeShift, setActiveShift] = useState<string|null>(null);
+
+  const resolveTargetCompanyId = async () => {
+    let tid = companyId && companyId !== "default" ? companyId : "";
+    if (!tid && auth.currentUser?.email) {
+      try {
+        const appSnap = await getDoc(doc(db, "approved_users", auth.currentUser.email.toLowerCase()));
+        if (appSnap.exists()) {
+          tid = appSnap.data().companyId || appSnap.data().orgId || "";
+        }
+      } catch (_) {}
+    }
+    return tid || "default";
+  };
+
+  const handleAddHolidaySubmit = async () => {
+    if (!newHolidayName.trim() || !newHolidayDate) return;
+    const hId = `HOL_${Date.now()}`;
+    const newHolidayObj = {
+      id: hId,
+      name: newHolidayName.trim(),
+      date: newHolidayDate,
+      type: newHolidayType,
+      branches: newHolidayAppliesTo,
+      recurring: newHolidayRecurring,
+      createdAt: new Date().toISOString(),
+    };
+
+    setShowCreateHoliday(false);
+    setNewHolidayName("");
+    setNewHolidayDate("");
+    setNewHolidayType("National");
+    setNewHolidayAppliesTo("All Branches");
+    setNewHolidayRecurring(false);
+
+    try {
+      const tid = await resolveTargetCompanyId();
+      await setDoc(doc(db, "organizations", tid, "holidays", hId), newHolidayObj, { merge: true });
+      opsToast("Holiday created successfully in real-time!");
+    } catch (err) {
+      console.error("Error creating holiday:", err);
+      opsToast("Failed to create holiday.");
+    }
+  };
+
+  const handleDeleteHoliday = async (hId: string) => {
+    try {
+      const tid = await resolveTargetCompanyId();
+      await deleteDoc(doc(db, "organizations", tid, "holidays", hId));
+      opsToast("Holiday deleted successfully!");
+    } catch (err) {
+      console.error("Error deleting holiday:", err);
+      opsToast("Failed to delete holiday.");
+    }
+  };
 
   // ── Policies state ──
   const [polTab, setPolTab] = useState("Attendance Policy");
@@ -1659,12 +1721,12 @@ export function OrganizationPage({
                     </div>
                     <div className="flex-1 grid grid-cols-3 gap-x-8 gap-y-3">
                       {([
-                        ["Company", realtimeOrgProfile?.name || realtimeOrgProfile?.organizationName || orgData.name || "Acme Corp"],
+                        ["Company", realtimeOrgProfile?.companyName || realtimeOrgProfile?.orgName || realtimeOrgProfile?.name || orgData.name || "Acme Corp"],
                         ["Industry", realtimeOrgProfile?.industry || orgData.industry || "Technology"],
-                        ["Founded", realtimeOrgProfile?.founded || "2020"],
+                        ["Founded", realtimeOrgProfile?.founded || (realtimeOrgProfile?.createdAt ? new Date(realtimeOrgProfile.createdAt).getFullYear().toString() : "2020")],
                         ["Employee Count", String(activeEmpList.length)],
-                        ["Headquarters", realtimeOrgProfile?.headquarters || realtimeOrgProfile?.address || activeBranches[0]?.addr || activeBranches[0]?.name || orgData.address || "123 Main St, New York HQ"],
-                        ["Working Days", realtimeOrgProfile?.workingDays || "Mon – Fri"]
+                        ["Headquarters", realtimeOrgProfile?.headquarters || (realtimeOrgProfile?.locations?.[0]?.city ? `${realtimeOrgProfile.locations[0].city} HQ` : realtimeOrgProfile?.address) || activeBranches[0]?.addr || activeBranches[0]?.name || orgData.address || "123 Main St, New York HQ"],
+                        ["Working Days", realtimeOrgProfile?.workingDays || (realtimeOrgProfile?.weekStartDay ? `${realtimeOrgProfile.weekStartDay.slice(0,3)} – Fri` : "Mon – Fri")]
                       ] as [string,string][]).map(([k,v])=>(
                         <div key={k}><p className="text-[10px] text-gray-400 uppercase tracking-wide mb-0.5">{k}</p><p className="text-sm font-medium text-gray-800">{v}</p></div>
                       ))}
@@ -2215,10 +2277,10 @@ export function OrganizationPage({
 
               {/* Holidays */}
               {opsTab==="Holidays"&&(
-                <div className="grid grid-cols-2 gap-5">
+                <div className="grid grid-cols-2 gap-5 text-left">
                   <div className="bg-white rounded-lg border border-gray-200">
                     <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
-                      <h4 className="text-sm font-semibold text-gray-800">Holiday Calendar 2024</h4>
+                      <h4 className="text-sm font-semibold text-gray-800">Holiday Calendar {holCalYear}</h4>
                       <div className="flex gap-2">
                         <Btn size="sm" variant="outline"><Download size={12}/>Export</Btn>
                         <Btn size="sm" onClick={()=>setShowCreateHoliday(true)}><Plus size={13}/>Add</Btn>
@@ -2230,12 +2292,21 @@ export function OrganizationPage({
                         {activeHolidays.length === 0 ? (
                           <tr><td colSpan={5} className="px-4 py-8 text-center text-xs text-gray-400">No holidays configured yet</td></tr>
                         ) : activeHolidays.map((h,i)=>(
-                          <tr key={i} className="hover:bg-gray-50">
-                            <td className="px-4 py-2.5 text-xs font-mono text-gray-600">{h.date}</td>
+                          <tr key={h.id || i} className="hover:bg-gray-50">
+                            <td className="px-4 py-2.5 text-xs font-mono text-gray-600">
+                              {h.date ? new Date(h.date).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "—"}
+                            </td>
                             <td className="px-4 py-2.5 text-sm font-medium text-gray-800">{h.name}</td>
                             <td className="px-4 py-2.5"><span className={cn("text-xs px-2 py-0.5 rounded",h.type==="National"?"bg-blue-50 text-blue-700":"bg-gray-100 text-gray-600")}>{h.type}</span></td>
-                            <td className="px-4 py-2.5 text-xs text-gray-500">{h.branches}</td>
-                            <td className="px-4 py-2.5"><div className="flex gap-1"><button className="p-1 hover:bg-gray-100 rounded text-gray-400 hover:text-gray-600"><Edit size={12}/></button><button className="p-1 hover:bg-red-50 rounded text-gray-400 hover:text-red-500"><Trash2 size={12}/></button></div></td>
+                            <td className="px-4 py-2.5 text-xs text-gray-500">{h.branches || "All Branches"}</td>
+                            <td className="px-4 py-2.5">
+                              <div className="flex gap-1">
+                                <button className="p-1 hover:bg-gray-100 rounded text-gray-400 hover:text-gray-600"><Edit size={12}/></button>
+                                <button onClick={() => handleDeleteHoliday(h.id)} className="p-1 hover:bg-red-50 rounded text-gray-400 hover:text-red-500" title="Delete Holiday">
+                                  <Trash2 size={12}/>
+                                </button>
+                              </div>
+                            </td>
                           </tr>
                         ))}
                       </tbody>
@@ -2243,25 +2314,118 @@ export function OrganizationPage({
                   </div>
                   <div className="bg-white rounded-lg border border-gray-200 p-5">
                     <div className="flex items-center justify-between mb-4">
-                      <h4 className="text-sm font-semibold text-gray-800">July 2024</h4>
-                      <div className="flex gap-1"><button className="p-1.5 hover:bg-gray-100 rounded"><ChevronLeft size={14}/></button><button className="p-1.5 hover:bg-gray-100 rounded"><ChevronRight size={14}/></button></div>
+                      <h4 className="text-sm font-semibold text-gray-800">
+                        {new Date(holCalYear, holCalMonth).toLocaleString("default", { month: "long", year: "numeric" })}
+                      </h4>
+                      <div className="flex gap-1">
+                        <button 
+                          onClick={() => {
+                            if (holCalMonth === 0) {
+                              setHolCalMonth(11);
+                              setHolCalYear(prev => prev - 1);
+                            } else {
+                              setHolCalMonth(prev => prev - 1);
+                            }
+                          }} 
+                          className="p-1.5 hover:bg-gray-100 rounded"
+                        >
+                          <ChevronLeft size={14}/>
+                        </button>
+                        <button 
+                          onClick={() => {
+                            if (holCalMonth === 11) {
+                              setHolCalMonth(0);
+                              setHolCalYear(prev => prev + 1);
+                            } else {
+                              setHolCalMonth(prev => prev + 1);
+                            }
+                          }} 
+                          className="p-1.5 hover:bg-gray-100 rounded"
+                        >
+                          <ChevronRight size={14}/>
+                        </button>
+                      </div>
                     </div>
                     <div className="grid grid-cols-7 gap-1 mb-2">
                       {["Su","Mo","Tu","We","Th","Fr","Sa"].map(d=><div key={d} className="text-center text-[10px] font-medium text-gray-400 py-1">{d}</div>)}
                     </div>
-                    <div className="grid grid-cols-7 gap-1">
-                      {[""," "," "," "," "," ","1","2","3","4","5","6","7","8","9","10","11","12","13","14","15","16","17","18","19","20","21","22","23","24","25","26","27","28","29","30","31"].map((d,i)=>(
-                        <div key={i} className={cn("h-8 flex items-center justify-center text-xs rounded-lg cursor-pointer",d==="4"?"bg-[#5C5CFF] text-white font-semibold":d&&d.trim()?"hover:bg-gray-100 text-gray-700":"","")}>
-                          {d&&d.trim()?d:""}
+                    {(() => {
+                      const daysInMonth = new Date(holCalYear, holCalMonth + 1, 0).getDate();
+                      const firstDayIndex = new Date(holCalYear, holCalMonth, 1).getDay();
+                      const calendarCells: string[] = [];
+                      for (let i = 0; i < firstDayIndex; i++) {
+                        calendarCells.push("");
+                      }
+                      for (let i = 1; i <= daysInMonth; i++) {
+                        calendarCells.push(String(i));
+                      }
+                      
+                      return (
+                        <div className="grid grid-cols-7 gap-1">
+                          {calendarCells.map((d, i) => {
+                            const isDateValid = d && d.trim();
+                            const cellDay = isDateValid ? parseInt(d) : 0;
+                            const hasHoliday = activeHolidays.find(h => {
+                              if (!h.date) return false;
+                              const hDateObj = new Date(h.date);
+                              return (
+                                hDateObj.getDate() === cellDay &&
+                                hDateObj.getMonth() === holCalMonth &&
+                                (h.recurring || hDateObj.getFullYear() === holCalYear)
+                              );
+                            });
+
+                            return (
+                              <div 
+                                key={i} 
+                                title={hasHoliday ? hasHoliday.name : ""}
+                                className={cn(
+                                  "h-8 flex items-center justify-center text-xs rounded-lg cursor-pointer transition-all",
+                                  hasHoliday 
+                                    ? "bg-[#5C5CFF] text-white font-semibold shadow-sm hover:bg-[#5C5CFF]/90" 
+                                    : isDateValid 
+                                      ? "hover:bg-gray-100 text-gray-700" 
+                                      : "text-transparent cursor-default"
+                                )}
+                              >
+                                {isDateValid ? d : ""}
+                              </div>
+                            );
+                          })}
                         </div>
-                      ))}
-                    </div>
+                      );
+                    })()}
                     <div className="mt-4 space-y-1.5">
                       <p className="text-xs font-medium text-gray-700 mb-2">This Month</p>
-                      <div className="flex items-center gap-2 px-3 py-2 bg-[#EEF2FF] rounded-lg">
-                        <div className="w-2 h-2 rounded-full bg-[#5C5CFF]"/>
-                        <span className="text-xs text-gray-700">Jul 4 – Independence Day</span>
-                      </div>
+                      {(() => {
+                        const monthHolidays = activeHolidays.filter(h => {
+                          if (!h.date) return false;
+                          const hDateObj = new Date(h.date);
+                          return (
+                            hDateObj.getMonth() === holCalMonth &&
+                            (h.recurring || hDateObj.getFullYear() === holCalYear)
+                          );
+                        });
+
+                        if (monthHolidays.length === 0) {
+                          return (
+                            <p className="text-xs text-gray-400 italic py-1">No holidays scheduled for this month.</p>
+                          );
+                        }
+
+                        return monthHolidays.map((h, idx) => {
+                          const dateObj = new Date(h.date);
+                          const dateFmt = dateObj.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+                          return (
+                            <div key={idx} className="flex items-center gap-2 px-3 py-2 bg-[#EEF2FF] rounded-lg">
+                              <div className="w-2 h-2 rounded-full bg-[#5C5CFF]"/>
+                              <span className="text-xs text-gray-700 font-medium">
+                                {dateFmt} – {h.name} ({h.type})
+                              </span>
+                            </div>
+                          );
+                        });
+                      })()}
                     </div>
                   </div>
                 </div>
@@ -2894,13 +3058,19 @@ export function OrganizationPage({
 
       {showCreateHoliday&&(
         <Modal title="Add Holiday" onClose={()=>setShowCreateHoliday(false)}>
-          <div className="space-y-4">
-            <InputField label="Holiday Name" placeholder="e.g. Company Foundation Day" required/>
-            <InputField label="Date" type="date" required/>
-            <SelectField label="Type" options={["National","Regional","Optional","Company"]}/>
-            <SelectField label="Applies To" options={["All Branches","New York HQ","San Francisco","Chicago","Austin"]}/>
-            <div className="flex items-center gap-2 text-sm text-gray-700"><input type="checkbox" className="rounded accent-[#5C5CFF]"/><span>Recurring annually</span></div>
-            <div className="flex justify-end gap-3"><Btn variant="outline" onClick={()=>setShowCreateHoliday(false)}>Cancel</Btn><Btn onClick={()=>setShowCreateHoliday(false)}>Add Holiday</Btn></div>
+          <div className="space-y-4 text-left">
+            <InputField label="Holiday Name" placeholder="e.g. Company Foundation Day" value={newHolidayName} onChange={(e: any) => setNewHolidayName(e.target.value)} required/>
+            <InputField label="Date" type="date" value={newHolidayDate} onChange={(e: any) => setNewHolidayDate(e.target.value)} required/>
+            <SelectField label="Type" value={newHolidayType} onChange={(v: any) => setNewHolidayType(String(v?.target?.value ?? v))} options={["National","Regional","Optional","Company"]}/>
+            <SelectField label="Applies To" value={newHolidayAppliesTo} onChange={(v: any) => setNewHolidayAppliesTo(String(v?.target?.value ?? v))} options={["All Branches","New York HQ","San Francisco","Chicago","Austin"]}/>
+            <div className="flex items-center gap-2 text-sm text-gray-700">
+              <input type="checkbox" checked={newHolidayRecurring} onChange={(e) => setNewHolidayRecurring(e.target.checked)} className="rounded accent-[#5C5CFF]"/>
+              <span>Recurring annually</span>
+            </div>
+            <div className="flex justify-end gap-3 pt-2 border-t border-gray-200">
+              <Btn variant="outline" onClick={()=>setShowCreateHoliday(false)}>Cancel</Btn>
+              <Btn onClick={handleAddHolidaySubmit} disabled={!newHolidayName.trim() || !newHolidayDate}>Add Holiday</Btn>
+            </div>
           </div>
         </Modal>
       )}

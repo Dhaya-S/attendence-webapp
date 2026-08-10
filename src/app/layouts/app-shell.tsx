@@ -213,7 +213,7 @@ export function AppShell() {
   // Sync sub-tabs on workspace changes
   useEffect(() => {
     if (teamSection === "Overview") {
-      setTeamTab("Members");
+      setTeamTab("Overview");
     } else {
       setTeamTab("Approvals");
     }
@@ -354,7 +354,7 @@ export function AppShell() {
     activeHeaderTab = documentsTab;
     onHeaderTabChange = setDocumentsTab;
   } else if (page === "settings") {
-    headerTabs = ["General", "Customization", "Integrations", "Security", "Billing", "Developer"];
+    headerTabs = [];
     activeHeaderTab = settingsTab;
     onHeaderTabChange = setSettingsTab;
   }

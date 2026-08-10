@@ -4,6 +4,7 @@ import { cn } from "@/shared/utils";
 import { TeamTask, TaskStatus } from "../../types";
 import { Avt } from "@/shared/components";
 import { EMP_COLORS } from "@/shared/constants/colors";
+import { useAuth } from "@/shared/context/AuthContext";
 
 interface TaskBoardProps {
   search: string;
@@ -36,11 +37,16 @@ export function TaskBoard({
 }: TaskBoardProps) {
   const [draggedOverCol, setDraggedOverCol] = useState<string | null>(null);
 
+  const { user, displayName, email } = useAuth();
+  const currentUserName = displayName || user?.displayName || (email ? String(email).split("@")[0] : "Unknown User");
+  const currentUserId = user?.uid || "unknown";
+  const currentUserInitials = currentUserName.split(" ").map((n: string) => n[0]).join("").toUpperCase().slice(0, 2) || "?";
+
   // Overdue detection: Due Date < Today AND Status != Completed AND Status != Archived
   const isTaskOverdue = (t: TeamTask) => {
     if (t.status === "Done" || t.status === "Archived") return false;
     if (!t.dueDate) return false;
-    const today = new Date("2026-07-05"); // Using reference date consistency
+    const today = new Date();
     today.setHours(0, 0, 0, 0);
     const due = new Date(t.dueDate);
     return due < today;
@@ -202,9 +208,9 @@ export function TaskBoard({
         const newAct = {
           id: `act-${Date.now()}`,
           taskId: t.id,
-          userId: "E004",
-          userName: "Alex Admin",
-          userInitials: "AA",
+          userId: currentUserId,
+          userName: currentUserName,
+          userInitials: currentUserInitials,
           type: "status_change" as const,
           details,
           createdAt: new Date().toISOString(),

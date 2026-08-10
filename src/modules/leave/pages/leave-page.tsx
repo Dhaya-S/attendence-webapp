@@ -364,10 +364,10 @@ export function LeavePage({
               )}
 
               {tab === "Analytics" && (() => {
-                // Compute monthly leave data from reqs
+                // Compute monthly leave data from visibleReqs
                 const monthNames = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
                 const monthlyData = monthNames.map((month, idx) => {
-                  const monthReqs = reqs.filter(r => {
+                  const monthReqs = visibleReqs.filter(r => {
                     if (!r.from) return false;
                     const m = new Date(r.from).getMonth();
                     return m === idx && r.status === "Approved";
@@ -382,9 +382,23 @@ export function LeavePage({
 
                 // Dept leave days
                 const deptMap: Record<string, number> = {};
-                reqs.forEach(r => {
-                  if (r.status !== "Approved" || !r.dept) return;
-                  deptMap[r.dept] = (deptMap[r.dept] || 0) + (r.days || 1);
+                // Pre-fill all known departments with 0
+                dbUsers.forEach(u => {
+                  const d = u.dept || u.department;
+                  if (d && deptMap[d] === undefined) deptMap[d] = 0;
+                });
+
+                visibleReqs.forEach(r => {
+                  if (r.status !== "Approved") return;
+                  let d = r.dept || r.department;
+                  if (!d) {
+                    const empEmail = String(r.employeeEmail || r.email || r.applicantEmail || "").toLowerCase();
+                    const empProfile = dbUsers.find(u => String(u.email || u.workEmail || "").toLowerCase() === empEmail);
+                    if (empProfile) d = empProfile.dept || empProfile.department;
+                  }
+                  if (!d) d = "Unassigned";
+                  if (deptMap[d] === undefined) deptMap[d] = 0;
+                  deptMap[d] += (r.days || 1);
                 });
                 const deptData = Object.entries(deptMap).sort((a, b) => b[1] - a[1]);
                 const maxDays = deptData[0]?.[1] || 1;

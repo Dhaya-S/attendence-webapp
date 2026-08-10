@@ -14,6 +14,9 @@ interface OverviewTabProps {
   setLeaveSection: (sec: "My Space" | "My Team") => void;
   navigate: (page: string, emp?: any, tabOrSection?: string) => void;
   teamMembers?: any[];
+  tasks?: any[];
+  orgProfile?: any;
+  allCompanyUsers?: any[];
 }
 
 export function OverviewTab({
@@ -24,6 +27,9 @@ export function OverviewTab({
   setLeaveSection,
   navigate,
   teamMembers: teamMembersProp,
+  tasks: tasksProp,
+  orgProfile,
+  allCompanyUsers,
 }: OverviewTabProps) {
   const baseMembers = teamMembersProp || EMPLOYEES;
   const teamMembers =
@@ -58,10 +64,10 @@ export function OverviewTab({
   });
 
   // Dept details lookup
-  const deptName = deptFilter === "All" ? "Acme Corp" : deptFilter;
-  const deptHead = DEPT_INFO[deptFilter]?.head || "Alex Admin";
-  const deptLoc = DEPT_INFO[deptFilter]?.location || "New York HQ";
-  const deptDesc = DEPT_INFO[deptFilter]?.details || "Global corporate office";
+  const deptName = deptFilter === "All" ? (orgProfile?.companyName || orgProfile?.orgName || orgProfile?.name || "Acme Corp") : deptFilter;
+  const deptHead = DEPT_INFO[deptFilter]?.head || orgProfile?.adminDetails?.name || orgProfile?.ownerName || orgProfile?.head || "Alex Admin";
+  const deptLoc = DEPT_INFO[deptFilter]?.location || (orgProfile?.locations?.[0]?.city ? `${orgProfile.locations[0].city} HQ` : orgProfile?.address || "New York HQ");
+  const deptDesc = DEPT_INFO[deptFilter]?.details || orgProfile?.industry || "Global corporate office";
 
   // Manager attention stats
   const pendingLeaves = teamReqs.filter((r) => {
@@ -76,7 +82,8 @@ export function OverviewTab({
     return att.status === "Late";
   }).length;
 
-  const overdueTasksCount = TEAM_TASKS.filter((t) => {
+  const tasksList = tasksProp || TEAM_TASKS;
+  const overdueTasksCount = tasksList.filter((t) => {
     const isDeptMatch =
       deptFilter === "All" ||
       t.dept === deptFilter ||
@@ -305,7 +312,7 @@ export function OverviewTab({
                   Team Strength
                 </p>
                 <p className="text-xs font-semibold text-gray-808 mt-0.5">
-                  {teamMembers.length} employees
+                  {(allCompanyUsers || EMPLOYEES).length} employees
                 </p>
               </div>
               <div>
@@ -327,15 +334,28 @@ export function OverviewTab({
             <div className="space-y-2.5">
               <div className="flex justify-between text-xs font-medium">
                 <span className="text-gray-505">Managers</span>
-                <span className="text-gray-808">{managerCount}</span>
+                <span className="text-gray-808">
+                  {(allCompanyUsers || EMPLOYEES).filter((e) =>
+                    ["Manager", "VP", "Head", "Lead", "Director", "CEO", "CFO", "Admin"].some(
+                      (word) => String(e.designation || "").includes(word)
+                    )
+                  ).length}
+                </span>
               </div>
               <div className="flex justify-between text-xs font-medium">
                 <span className="text-gray-505">Employees</span>
-                <span className="text-gray-808">{employeeCount}</span>
+                <span className="text-gray-808">
+                  {(allCompanyUsers || EMPLOYEES).length - 
+                   (allCompanyUsers || EMPLOYEES).filter((e) =>
+                     ["Manager", "VP", "Head", "Lead", "Director", "CEO", "CFO", "Admin"].some(
+                       (word) => String(e.designation || "").includes(word)
+                     )
+                   ).length}
+                </span>
               </div>
               <div className="border-t border-gray-100 pt-2 flex justify-between text-xs font-bold">
                 <span className="text-gray-900">Total</span>
-                <span className="text-[#5C5CFF]">{teamMembers.length}</span>
+                <span className="text-[#5C5CFF]">{(allCompanyUsers || EMPLOYEES).length}</span>
               </div>
             </div>
           </div>

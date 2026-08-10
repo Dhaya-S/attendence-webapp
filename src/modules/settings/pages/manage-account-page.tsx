@@ -19,7 +19,7 @@ import { Avt, StatusBadge, Btn, Modal, InputField, SelectField, TabBar } from "@
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 type MASection = "Users"|"Organization Setup"|"User Access Control"|"Manage Services"|"Automation"|"Approvals"|"Audit Logs";
-type OrgSetupNav = "Organization Details"|"Organization Policy"|"Organization Structure"|"Locations"|"Departments"|"Designations"|"Domains & Branding"|"Email Authentication";
+type OrgSetupNav = "Organization Details"|"Organization Policy"|"Organization Structure"|"Locations"|"Departments"|"Designations"|"Shifts"|"Domains & Branding"|"Email Authentication";
 type ACNav = "General Roles"|"Custom Roles"|"Role Assignment"|"Permission Matrix"|"Administrators";
 type AutomNav = "Approval Workflows"|"Attendance Automation"|"Leave Automation"|"Shift Automation"|"Notification Automation"|"Business Rules"|"Scheduled Jobs";
 type ApprovalNav = "Attendance"|"Leave"|"Shift"|"Department"|"Employee"|"Delegation"|"Approval Matrix"|"History";
@@ -441,14 +441,20 @@ function UsersSection() {
 // ── ORGANIZATION SETUP ─────────────────────────────────────────────────────────
 function OrgSetupSection() {
   const { companyId: authCompanyId } = useAuth();
-  const targetCompanyId = authCompanyId && authCompanyId !== "default" ? authCompanyId : "default";
+  const targetCompanyId = authCompanyId || "default";
 
-  const NAV: OrgSetupNav[] = ["Organization Details","Organization Policy","Organization Structure","Locations","Departments","Designations","Domains & Branding","Email Authentication"];
+  const NAV: OrgSetupNav[] = ["Organization Details","Organization Policy","Organization Structure","Locations","Departments","Designations","Shifts","Domains & Branding","Email Authentication"];
   const [active, setActive] = useState<OrgSetupNav>("Organization Details");
 
   // Real-time Firestore State
   const [isSaving, setIsSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
+  const [toastState, setToastState] = useState<{ type: "success" | "error"; msg: string } | null>(null);
+
+  const triggerToast = (type: "success" | "error", msg: string) => {
+    setToastState({ type, msg });
+    setTimeout(() => setToastState(null), 4000);
+  };
 
   // Form states for Organization Details
   const [orgName, setOrgName] = useState("");
@@ -489,10 +495,30 @@ function OrgSetupSection() {
   const [showAddDept, setShowAddDept] = useState(false);
   const [showAddLoc, setShowAddLoc] = useState(false);
   const [showAddDesig, setShowAddDesig] = useState(false);
+  const [showAddLevel, setShowAddLevel] = useState(false);
+  const [editingLoc, setEditingLoc] = useState<any | null>(null);
+
+  const [newLocName, setNewLocName] = useState("");
+  const [newLocType, setNewLocType] = useState("Regional Office");
   const [newLocAddr, setNewLocAddr] = useState("");
   const [newLocCity, setNewLocCity] = useState("");
   const [newLocState, setNewLocState] = useState("");
   const [newLocTz, setNewLocTz] = useState("(UTC-8) Pacific");
+  const [newLocLat, setNewLocLat] = useState("");
+  const [newLocLng, setNewLocLng] = useState("");
+  const [isFetchingCoords, setIsFetchingCoords] = useState(false);
+  const [coordMsg, setCoordMsg] = useState<string | null>(null);
+
+  const [newLevelName, setNewLevelName] = useState("");
+  const [newLevelDesc, setNewLevelDesc] = useState("");
+
+  const [smtpHost, setSmtpHost] = useState("smtp.gmail.com");
+  const [smtpPort, setSmtpPort] = useState("587");
+  const [smtpUser, setSmtpUser] = useState("noreply@acmecorp.com");
+  const [smtpPass, setSmtpPass] = useState("••••••••");
+  const [smtpEncryption, setSmtpEncryption] = useState("TLS");
+  const [brandColor, setBrandColor] = useState("#5C5CFF");
+  const [customHex, setCustomHex] = useState("#5C5CFF");
 
   const [newDeptName, setNewDeptName] = useState("");
   const [newDeptHead, setNewDeptHead] = useState("Assign later");
@@ -504,8 +530,18 @@ function OrgSetupSection() {
   const [newDesigDept, setNewDesigDept] = useState("All");
   const [realtimeCompanyEmps, setRealtimeCompanyEmps] = useState<any[]>([]);
 
+  // Shifts state
+  const [shifts, setShifts] = useState<any[]>([]);
+  const [showAddShift, setShowAddShift] = useState(false);
+  const [newShiftName, setNewShiftName] = useState("");
+  const [newShiftStart, setNewShiftStart] = useState("09:00");
+  const [newShiftEnd, setNewShiftEnd] = useState("18:00");
+  const [newShiftDays, setNewShiftDays] = useState("Mon - Fri");
+  const [newShiftGrace, setNewShiftGrace] = useState("15 min");
+  const [newShiftType, setNewShiftType] = useState("Fixed");
+
   useEffect(() => {
-    if (!targetCompanyId || targetCompanyId === "default") return;
+    if (!targetCompanyId) return;
     try {
       onSnapshot(collection(db, "organizations", targetCompanyId, "users"), (snap) => {
         setRealtimeCompanyEmps(snap.docs.map(d => {
@@ -518,7 +554,7 @@ function OrgSetupSection() {
 
   // 1. Real-time Firestore Listener on /organizations/{companyId}
   useEffect(() => {
-    if (!targetCompanyId || targetCompanyId === "default") return;
+    if (!targetCompanyId) return;
     const orgRef = doc(db, "organizations", targetCompanyId);
     const unsub = onSnapshot(orgRef, (snap) => {
       if (snap.exists()) {
@@ -554,11 +590,28 @@ function OrgSetupSection() {
           if (d.wfhPolicy.geofenceRequired) setGeofenceRequired(d.wfhPolicy.geofenceRequired);
         }
 
-        if (Array.isArray(d.locations) && d.locations.length > 0) setLocations(d.locations);
+        const locs = d.locations || d["----------"];
+        if (Array.isArray(locs) && locs.length > 0) setLocations(locs);
         if (Array.isArray(d.levels) && d.levels.length > 0) setLevels(d.levels);
+        if (d.brandColor) setBrandColor(d.brandColor);
+        if (d.smtpConfig) {
+          if (d.smtpConfig.smtpHost) setSmtpHost(d.smtpConfig.smtpHost);
+          if (d.smtpConfig.smtpPort) setSmtpPort(d.smtpConfig.smtpPort);
+          if (d.smtpConfig.smtpUser) setSmtpUser(d.smtpConfig.smtpUser);
+          if (d.smtpConfig.smtpPass) setSmtpPass(d.smtpConfig.smtpPass);
+          if (d.smtpConfig.smtpEncryption) setSmtpEncryption(d.smtpConfig.smtpEncryption);
+        }
       }
     }, (err) => {
       console.warn("Error listening to organization setup:", err);
+    });
+
+    // Listen to branches subcollection as the single source of truth for locations
+    const unsubBranches = onSnapshot(collection(db, "organizations", targetCompanyId, "branches"), (snap) => {
+      if (!snap.empty) {
+        const list = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        setLocations(list);
+      }
     });
 
     // Listen to departments subcollection as the single source of truth
@@ -577,12 +630,19 @@ function OrgSetupSection() {
       }
     });
 
-    return () => { unsub(); unsubDepts(); unsubDesigs(); };
+    // Listen to shifts subcollection
+    const unsubShifts = onSnapshot(collection(db, "organizations", targetCompanyId, "shifts"), (snap) => {
+      const list = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      setShifts(list);
+    });
+
+    return () => { unsub(); unsubBranches(); unsubDepts(); unsubDesigs(); unsubShifts(); };
   }, [targetCompanyId]);
 
   // Save changes handler to Firestore
-  const handleSaveOrgSetup = async (extraPayload = {}) => {
-    if (!targetCompanyId || targetCompanyId === "default") return;
+  const handleSaveOrgSetup = async (extraPayload: any = {}) => {
+    if (!targetCompanyId) return;
+    const cleanPayload = (extraPayload && typeof extraPayload === "object" && !("nativeEvent" in extraPayload) && !("target" in extraPayload) && !("_reactName" in extraPayload)) ? extraPayload : {};
     setIsSaving(true);
     try {
       const payload = {
@@ -621,8 +681,19 @@ function OrgSetupSection() {
         locations,
         departments,
         designations,
+        shifts,
+        levels,
+        brandColor: customHex || brandColor,
+        smtpConfig: {
+          smtpHost,
+          smtpPort,
+          smtpUser,
+          smtpPass,
+          smtpEncryption,
+          smtpFromName: orgName,
+        },
         updatedAt: new Date().toISOString(),
-        ...extraPayload,
+        ...cleanPayload,
       };
 
       await setDoc(doc(db, "organizations", targetCompanyId), payload, { merge: true });
@@ -637,27 +708,142 @@ function OrgSetupSection() {
       }
 
       setSaveSuccess(true);
-      setTimeout(() => setSaveSuccess(false), 3000);
-    } catch (err) {
+      triggerToast("success", "Organization Details saved successfully in real-time to Firestore!");
+      setTimeout(() => setSaveSuccess(false), 4000);
+    } catch (err: any) {
       console.error("Error saving organization setup to Firestore:", err);
+      triggerToast("error", `Error saving to Firestore: ${err?.message || "Unknown error"}`);
     } finally {
       setIsSaving(false);
     }
   };
 
+  // Geocoding API handler using OpenStreetMap Nominatim API
+  const handleFetchCoords = async () => {
+    const query = [newLocAddr, newLocCity, newLocState].filter(Boolean).join(", ");
+    if (!query.trim()) {
+      setCoordMsg("⚠️ Please enter Address or City first.");
+      return;
+    }
+    setIsFetchingCoords(true);
+    setCoordMsg(null);
+    try {
+      const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&limit=1&q=${encodeURIComponent(query)}`);
+      const data = await res.json();
+      if (Array.isArray(data) && data.length > 0 && data[0].lat && data[0].lon) {
+        const latVal = parseFloat(data[0].lat).toFixed(6);
+        const lonVal = parseFloat(data[0].lon).toFixed(6);
+        setNewLocLat(latVal);
+        setNewLocLng(lonVal);
+        setCoordMsg(`✅ Coords Fetched via API: Lat ${latVal}, Lng ${lonVal}`);
+      } else {
+        setCoordMsg("⚠️ Location not found via Geocoding API. Please enter Lat/Lng manually or use GPS.");
+      }
+    } catch (_) {
+      setCoordMsg("⚠️ Geocoding API request failed. Enter Lat/Lng manually or use GPS.");
+    } finally {
+      setIsFetchingCoords(false);
+    }
+  };
+
+  const handleUseGps = () => {
+    if (!navigator.geolocation) {
+      setCoordMsg("⚠️ Geolocation is not supported by your browser.");
+      return;
+    }
+    setCoordMsg("Fetching GPS location...");
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const latVal = pos.coords.latitude.toFixed(6);
+        const lonVal = pos.coords.longitude.toFixed(6);
+        setNewLocLat(latVal);
+        setNewLocLng(lonVal);
+        setCoordMsg(`✅ GPS Coords: Lat ${latVal}, Lng ${lonVal}`);
+      },
+      (err) => {
+        setCoordMsg(`⚠️ GPS error: ${err.message}`);
+      }
+    );
+  };
+
   const handleAddLocationSubmit = async () => {
     if (!newLocCity.trim() || !newLocAddr.trim()) return;
+    const locId = editingLoc?.id || `LOC_${Date.now()}`;
+    const latNum = parseFloat(newLocLat) || 0;
+    const lngNum = parseFloat(newLocLng) || 0;
+
     const newLoc = {
-      name: `${newLocCity} Branch`,
-      type: "Regional Office",
-      addr: `${newLocAddr}, ${newLocCity}, ${newLocState}`,
-      emp: 0,
+      id: locId,
+      name: newLocName.trim() || `${newLocCity} Branch`,
+      type: newLocType || "Regional Office",
+      addr: `${newLocAddr}, ${newLocCity}${newLocState ? `, ${newLocState}` : ""}`,
+      address: newLocAddr,
+      city: newLocCity,
+      state: newLocState,
+      timezone: newLocTz,
+      lat: latNum,
+      lng: lngNum,
+      latitude: latNum,
+      longitude: lngNum,
+      emp: editingLoc?.emp || 0,
+      createdAt: editingLoc?.createdAt || new Date().toISOString(),
     };
-    const updatedLocs = [newLoc, ...locations];
+
+    const updatedLocs = editingLoc
+      ? locations.map((l) => (l.id === editingLoc.id || l.name === editingLoc.name ? newLoc : l))
+      : [newLoc, ...locations];
+
     setLocations(updatedLocs);
     setShowAddLoc(false);
-    setNewLocAddr(""); setNewLocCity(""); setNewLocState("");
+    setEditingLoc(null);
+    setNewLocName(""); setNewLocAddr(""); setNewLocCity(""); setNewLocState(""); setNewLocLat(""); setNewLocLng(""); setCoordMsg(null);
+
     await handleSaveOrgSetup({ locations: updatedLocs });
+    triggerToast("success", "Location saved successfully to Firestore!");
+    if (targetCompanyId) {
+      try {
+        await setDoc(doc(db, "organizations", targetCompanyId, "branches", locId), newLoc, { merge: true });
+        await setDoc(doc(db, "organizations", targetCompanyId, "locations", locId), newLoc, { merge: true });
+      } catch (err) {
+        console.error("Error writing location/branch to Firestore:", err);
+      }
+    }
+  };
+
+  const handleDeleteLocation = async (loc: any) => {
+    const locId = loc.id || loc.name;
+    const updatedLocs = locations.filter((l) => (l.id || l.name) !== locId);
+    setLocations(updatedLocs);
+    await handleSaveOrgSetup({ locations: updatedLocs });
+    triggerToast("success", "Location deleted successfully from Firestore!");
+    if (targetCompanyId && loc.id) {
+      try {
+        await deleteDoc(doc(db, "organizations", targetCompanyId, "branches", loc.id));
+        await deleteDoc(doc(db, "organizations", targetCompanyId, "locations", loc.id));
+      } catch (_) {}
+    }
+  };
+
+  const handleAddLevelSubmit = async () => {
+    if (!newLevelName.trim()) return;
+    const newLvl = {
+      level: newLevelName.trim(),
+      desc: newLevelDesc.trim() || "Reporting Tier",
+      count: 0,
+    };
+    const updated = [newLvl, ...levels];
+    setLevels(updated);
+    setShowAddLevel(false);
+    setNewLevelName(""); setNewLevelDesc("");
+    await handleSaveOrgSetup({ levels: updated });
+    triggerToast("success", "Reporting level added successfully!");
+  };
+
+  const handleDeleteLevel = async (lvl: any) => {
+    const updated = levels.filter((l) => l.level !== lvl.level);
+    setLevels(updated);
+    await handleSaveOrgSetup({ levels: updated });
+    triggerToast("success", "Reporting level deleted successfully!");
   };
 
   const handleAddDepartmentSubmit = async () => {
@@ -677,9 +863,10 @@ function OrgSetupSection() {
       setEditingDept(null);
       setNewDeptName("");
 
-      if (targetCompanyId && targetCompanyId !== "default") {
+      if (targetCompanyId) {
         try {
           await setDoc(doc(db, "organizations", targetCompanyId, "departments", dId), updatedObj, { merge: true });
+          triggerToast("success", "Department updated successfully in real-time!");
         } catch (err) {
           console.error("Error updating department in Firestore:", err);
           setDepartments(prev => prev.map(x => (x.id === editingDept.id || x.name === editingDept.name) ? updatedObj : x));
@@ -707,9 +894,10 @@ function OrgSetupSection() {
     setShowAddDept(false);
     setNewDeptName("");
 
-    if (targetCompanyId && targetCompanyId !== "default") {
+    if (targetCompanyId) {
       try {
         await setDoc(doc(db, "organizations", targetCompanyId, "departments", dId), newDeptObj, { merge: true });
+        triggerToast("success", "Department created successfully in real-time!");
       } catch (err) {
         console.error("Error writing department to subcollection:", err);
         setDepartments(prev => [newDeptObj, ...prev]);
@@ -724,7 +912,7 @@ function OrgSetupSection() {
     const updated = departments.filter(d => (d.id || d.name) !== dId);
     setDepartments(updated);
 
-    if (targetCompanyId && targetCompanyId !== "default") {
+    if (targetCompanyId) {
       try {
         if (dept.id) {
           await deleteDoc(doc(db, "organizations", targetCompanyId, "departments", dept.id));
@@ -753,10 +941,11 @@ function OrgSetupSection() {
     const updatedDesigs = [newDesigObj, ...designations];
     setDesignations(updatedDesigs);
 
-    if (targetCompanyId && targetCompanyId !== "default") {
+    if (targetCompanyId) {
       try {
         await setDoc(doc(db, "organizations", targetCompanyId, "designations", desId), newDesigObj, { merge: true });
         await handleSaveOrgSetup({ designations: updatedDesigs });
+        triggerToast("success", "Designation created successfully in real-time!");
       } catch (err) {
         console.error("Error writing designation to Firestore:", err);
       }
@@ -768,14 +957,59 @@ function OrgSetupSection() {
     const updated = designations.filter(d => (d.id || d.name) !== desId);
     setDesignations(updated);
 
-    if (targetCompanyId && targetCompanyId !== "default") {
+    if (targetCompanyId) {
       try {
         if (desig.id) {
           await deleteDoc(doc(db, "organizations", targetCompanyId, "designations", desig.id));
         }
         await handleSaveOrgSetup({ designations: updated });
+        triggerToast("success", "Designation deleted successfully!");
       } catch (err) {
         console.error("Error deleting designation from Firestore:", err);
+      }
+    }
+  };
+
+  // Shift CRUD handlers
+  const handleAddShiftSubmit = async () => {
+    if (!newShiftName.trim()) return;
+    const shiftId = `SH_${Date.now()}`;
+    const newShiftObj = {
+      id: shiftId,
+      name: newShiftName.trim(),
+      startTime: newShiftStart,
+      endTime: newShiftEnd,
+      workingDays: newShiftDays,
+      gracePeriod: newShiftGrace,
+      type: newShiftType,
+      active: true,
+      createdAt: new Date().toISOString(),
+    };
+    setShowAddShift(false);
+    setNewShiftName("");
+    setNewShiftStart("09:00");
+    setNewShiftEnd("18:00");
+    if (targetCompanyId) {
+      try {
+        await setDoc(doc(db, "organizations", targetCompanyId, "shifts", shiftId), newShiftObj, { merge: true });
+        triggerToast("success", "Shift created successfully in real-time!");
+      } catch (err) {
+        console.error("Error writing shift to Firestore:", err);
+        setShifts(prev => [newShiftObj, ...prev]);
+      }
+    } else {
+      setShifts(prev => [newShiftObj, ...prev]);
+    }
+  };
+
+  const handleDeleteShift = async (shift: any) => {
+    setShifts(prev => prev.filter(s => s.id !== shift.id));
+    triggerToast("success", "Shift deleted successfully!");
+    if (targetCompanyId && shift.id) {
+      try {
+        await deleteDoc(doc(db, "organizations", targetCompanyId, "shifts", shift.id));
+      } catch (err) {
+        console.error("Error deleting shift from Firestore:", err);
       }
     }
   };
@@ -800,7 +1034,7 @@ function OrgSetupSection() {
         {active==="Organization Details"&&(
           <div className="max-w-2xl space-y-5">
             <SectionHeader title="Organization Details" subtitle="Basic information about your organization">
-              <Btn size="sm" onClick={handleSaveOrgSetup} disabled={isSaving}>
+              <Btn size="sm" onClick={() => handleSaveOrgSetup()} disabled={isSaving}>
                 {isSaving ? "Saving..." : "Save Changes"}
               </Btn>
             </SectionHeader>
@@ -834,7 +1068,7 @@ function OrgSetupSection() {
         {active==="Organization Policy"&&(
           <div className="max-w-2xl space-y-4">
             <SectionHeader title="Organization Policy" subtitle="Default policies applied across the organization">
-              <Btn size="sm" onClick={handleSaveOrgSetup} disabled={isSaving}>
+              <Btn size="sm" onClick={() => handleSaveOrgSetup()} disabled={isSaving}>
                 {isSaving ? "Saving..." : "Save Changes"}
               </Btn>
             </SectionHeader>
@@ -860,7 +1094,7 @@ function OrgSetupSection() {
           <div className="max-w-3xl space-y-4">
             <SectionHeader title="Organization Structure" subtitle="Manage your reporting hierarchy">
               <Btn variant="outline" size="sm"><Download size={12}/>Export</Btn>
-              <Btn size="sm"><Plus size={12}/>Add Level</Btn>
+              <Btn size="sm" onClick={()=>setShowAddLevel(true)}><Plus size={12}/>Add Level</Btn>
             </SectionHeader>
             <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
               <div className="p-5 space-y-3">
@@ -873,7 +1107,7 @@ function OrgSetupSection() {
                       <div className="flex-1"><p className="text-sm font-medium text-gray-800">{l.level}</p><p className="text-xs text-gray-400">{l.desc}</p></div>
                       <span className="text-sm font-bold text-gray-800">{l.count || 0}</span>
                       <span className="text-xs text-gray-400">people</span>
-                      <div className="flex gap-1"><button className="p-1.5 hover:bg-gray-100 rounded text-gray-400 hover:text-gray-600"><Edit size={12}/></button><button className="p-1.5 hover:bg-gray-100 rounded text-gray-400 hover:text-red-500"><Trash2 size={12}/></button></div>
+                      <div className="flex gap-1"><button onClick={()=>handleDeleteLevel(l)} className="p-1.5 hover:bg-gray-100 rounded text-gray-400 hover:text-red-500" title="Delete Level"><Trash2 size={12}/></button></div>
                     </div>
                   ))
                 )}
@@ -884,21 +1118,45 @@ function OrgSetupSection() {
 
         {active==="Locations"&&(
           <div className="max-w-3xl space-y-4">
-            <SectionHeader title="Locations" subtitle="Manage office locations and branches">
+            <SectionHeader title="Locations" subtitle="Manage office locations and branches with Lat & Long coordinates">
               <Btn variant="outline" size="sm"><Upload size={12}/>Bulk Import</Btn>
-              <Btn size="sm" onClick={()=>setShowAddLoc(true)}><Plus size={12}/>Add Location</Btn>
+              <Btn size="sm" onClick={() => {
+                setEditingLoc(null);
+                setNewLocName(""); setNewLocAddr(""); setNewLocCity(""); setNewLocState(""); setNewLocLat(""); setNewLocLng(""); setCoordMsg(null);
+                setShowAddLoc(true);
+              }}><Plus size={12}/>Add Location</Btn>
             </SectionHeader>
             <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
               <table className="w-full text-sm">
-                <TableHead cols={["Location","Type","Address","Employees","Actions"]}/>
+                <TableHead cols={["Location","Type","Address","Coordinates (Lat, Lng)","Employees","Actions"]}/>
                 <tbody className="divide-y divide-gray-100">
                   {locations.map(l=>(
-                    <tr key={l.name} className="hover:bg-gray-50">
+                    <tr key={l.id || l.name} className="hover:bg-gray-50">
                       <td className="px-4 py-3"><div className="flex items-center gap-2"><div className="w-7 h-7 rounded-lg bg-blue-50 flex items-center justify-center flex-shrink-0"><MapPin size={12} className="text-blue-500"/></div><span className="text-sm font-medium text-gray-800">{l.name}</span></div></td>
-                      <td className="px-4 py-3"><span className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded">{l.type}</span></td>
-                      <td className="px-4 py-3 text-xs text-gray-500">{l.addr}</td>
+                      <td className="px-4 py-3"><span className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded">{l.type || "Branch"}</span></td>
+                      <td className="px-4 py-3 text-xs text-gray-500">{l.addr || l.address}</td>
+                      <td className="px-4 py-3 text-xs font-mono text-gray-600 font-semibold">
+                        {(l.latitude || l.lat) ? `${parseFloat(l.latitude || l.lat).toFixed(4)}, ${parseFloat(l.longitude || l.lng).toFixed(4)}` : "Not set"}
+                      </td>
                       <td className="px-4 py-3 text-xs font-semibold text-gray-800">{realtimeCompanyEmps.filter(e => { const b = (e.branch || e.location || "").toLowerCase(); const n = (l.name || "").toLowerCase(); return b === n || b.includes(n.replace(" branch", "")) }).length}</td>
-                      <td className="px-4 py-3"><div className="flex gap-1"><button className="p-1.5 hover:bg-gray-100 rounded text-gray-400 hover:text-gray-600"><Edit size={12}/></button><button className="p-1.5 hover:bg-red-50 rounded text-gray-400 hover:text-red-500"><Trash2 size={12}/></button></div></td>
+                      <td className="px-4 py-3">
+                        <div className="flex gap-1">
+                          <button onClick={() => {
+                            setEditingLoc(l);
+                            setNewLocName(l.name || "");
+                            setNewLocType(l.type || "Regional Office");
+                            setNewLocAddr(l.address || l.addr?.split(",")[0] || "");
+                            setNewLocCity(l.city || l.addr?.split(",")[1]?.trim() || "");
+                            setNewLocState(l.state || l.addr?.split(",")[2]?.trim() || "");
+                            setNewLocTz(l.timezone || "(UTC-8) Pacific");
+                            setNewLocLat(l.latitude || l.lat ? String(l.latitude || l.lat) : "");
+                            setNewLocLng(l.longitude || l.lng ? String(l.longitude || l.lng) : "");
+                            setCoordMsg(null);
+                            setShowAddLoc(true);
+                          }} className="p-1.5 hover:bg-gray-100 rounded text-gray-400 hover:text-gray-600" title="Edit Location"><Edit size={12}/></button>
+                          <button onClick={()=>handleDeleteLocation(l)} className="p-1.5 hover:bg-red-50 rounded text-gray-400 hover:text-red-500" title="Delete Location"><Trash2 size={12}/></button>
+                        </div>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -976,10 +1234,57 @@ function OrgSetupSection() {
           </div>
         )}
 
+        {active==="Shifts"&&(
+          <div className="max-w-3xl space-y-5">
+            <SectionHeader title="Shifts" subtitle="Define work shifts for your organization">
+              <Btn size="sm" onClick={()=>setShowAddShift(true)}><Plus size={12}/>Add Shift</Btn>
+            </SectionHeader>
+            {shifts.length === 0 ? (
+              <div className="bg-white border-2 border-dashed border-gray-200 rounded-xl p-10 flex flex-col items-center justify-center text-center gap-3">
+                <Clock size={32} className="text-gray-300"/>
+                <div>
+                  <p className="text-sm font-semibold text-gray-700">No shifts defined yet</p>
+                  <p className="text-xs text-gray-400 mt-1">Add your first work shift to get started</p>
+                </div>
+                <Btn size="sm" onClick={()=>setShowAddShift(true)}><Plus size={12}/>Add Shift</Btn>
+              </div>
+            ) : (
+              <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
+                <table className="w-full text-sm">
+                  <TableHead cols={["Shift Name","Type","Start","End","Working Days","Grace Period","Status","Actions"]}/>
+                  <tbody className="divide-y divide-gray-100">
+                    {shifts.map((s)=>(
+                      <tr key={s.id} className="hover:bg-gray-50">
+                        <td className="px-4 py-3 font-medium text-gray-800">{s.name}</td>
+                        <td className="px-4 py-3"><span className="text-[10px] bg-blue-50 text-blue-600 px-2 py-0.5 rounded font-medium">{s.type||"Fixed"}</span></td>
+                        <td className="px-4 py-3 text-xs text-gray-600 font-mono">{s.startTime||"09:00"}</td>
+                        <td className="px-4 py-3 text-xs text-gray-600 font-mono">{s.endTime||"18:00"}</td>
+                        <td className="px-4 py-3 text-xs text-gray-500">{s.workingDays||"Mon - Fri"}</td>
+                        <td className="px-4 py-3 text-xs text-gray-500">{s.gracePeriod||"15 min"}</td>
+                        <td className="px-4 py-3">
+                          <span className={cn("text-[10px] px-2 py-0.5 rounded font-medium", s.active!==false ? "bg-green-50 text-green-600" : "bg-gray-100 text-gray-500")}>
+                            {s.active!==false?"Active":"Inactive"}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3">
+                          <div className="flex gap-1">
+                            <button className="p-1.5 hover:bg-gray-100 rounded text-gray-400 hover:text-gray-600" title="Edit"><Edit size={12}/></button>
+                            <button onClick={()=>handleDeleteShift(s)} className="p-1.5 hover:bg-red-50 rounded text-gray-400 hover:text-red-500" title="Delete"><Trash2 size={12}/></button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
+
         {active==="Domains & Branding"&&(
           <div className="max-w-2xl space-y-5">
             <SectionHeader title="Domains & Branding" subtitle="Customize your organization's identity">
-              <Btn size="sm" onClick={handleSaveOrgSetup}>Save Changes</Btn>
+              <Btn size="sm" onClick={() => handleSaveOrgSetup({ brandColor, portalName })}>Save Changes</Btn>
             </SectionHeader>
             <div className="bg-white border border-gray-200 rounded-xl p-5 space-y-4">
               <h4 className="text-sm font-semibold text-gray-800">Custom Domain</h4>
@@ -989,8 +1294,15 @@ function OrgSetupSection() {
             <div className="bg-white border border-gray-200 rounded-xl p-5 space-y-4">
               <h4 className="text-sm font-semibold text-gray-800">Brand Colors</h4>
               <div className="grid grid-cols-2 gap-4">
-                <div><label className="text-sm font-medium text-gray-700 block mb-1.5">Primary Color</label><div className="flex gap-2">{["#5C5CFF","#3B82F6","#22C55E","#F59E0B","#EF4444","#8B5CF6"].map(c=><button key={c} className={cn("w-8 h-8 rounded-full border-2",c==="#5C5CFF"?"border-gray-800":"border-transparent hover:scale-105")} style={{backgroundColor:c}}/>)}</div></div>
-                <InputField label="Custom Hex" placeholder="#5C5CFF"/>
+                <div>
+                  <label className="text-sm font-medium text-gray-700 block mb-1.5">Primary Color</label>
+                  <div className="flex gap-2">
+                    {["#5C5CFF","#3B82F6","#22C55E","#F59E0B","#EF4444","#8B5CF6"].map(c=>(
+                      <button key={c} type="button" onClick={() => { setBrandColor(c); setCustomHex(c); }} className={cn("w-8 h-8 rounded-full border-2 transition-all", brandColor === c ? "border-gray-900 scale-110" : "border-transparent hover:scale-105")} style={{backgroundColor:c}}/>
+                    ))}
+                  </div>
+                </div>
+                <InputField label="Custom Hex" value={customHex} onChange={(e: any) => { const val = e?.target?.value || e; setCustomHex(val); setBrandColor(val); }} placeholder="#5C5CFF"/>
               </div>
             </div>
           </div>
@@ -999,17 +1311,17 @@ function OrgSetupSection() {
         {active==="Email Authentication"&&(
           <div className="max-w-2xl space-y-5">
             <SectionHeader title="Email Authentication" subtitle="Configure email delivery and authentication">
-              <Btn size="sm" onClick={handleSaveOrgSetup}>Save Changes</Btn>
+              <Btn size="sm" onClick={() => handleSaveOrgSetup({ smtpConfig: { smtpHost, smtpPort, smtpUser, smtpPass, smtpEncryption, smtpFromName: orgName } })}>Save Changes</Btn>
             </SectionHeader>
             <div className="bg-white border border-gray-200 rounded-xl p-5 space-y-4">
               <h4 className="text-sm font-semibold text-gray-800">SMTP Configuration</h4>
               <div className="grid grid-cols-2 gap-4">
-                <InputField label="SMTP Host" placeholder="smtp.gmail.com"/>
-                <InputField label="SMTP Port" placeholder="587"/>
-                <InputField label="Username" placeholder="noreply@acmecorp.com"/>
-                <InputField label="Password" type="password" placeholder="••••••••"/>
-                <SelectField label="Encryption" options={["TLS","SSL","None"]}/>
-                <InputField label="From Name" value={orgName}/>
+                <InputField label="SMTP Host" value={smtpHost} onChange={(e: any) => setSmtpHost(e?.target?.value || e)} placeholder="smtp.gmail.com"/>
+                <InputField label="SMTP Port" value={smtpPort} onChange={(e: any) => setSmtpPort(e?.target?.value || e)} placeholder="587"/>
+                <InputField label="Username" value={smtpUser} onChange={(e: any) => setSmtpUser(e?.target?.value || e)} placeholder="noreply@acmecorp.com"/>
+                <InputField label="Password" type="password" value={smtpPass} onChange={(e: any) => setSmtpPass(e?.target?.value || e)} placeholder="••••••••"/>
+                <SelectField label="Encryption" value={smtpEncryption} onChange={(e: any) => setSmtpEncryption(e?.target?.value || e)} options={["TLS","SSL","None"]}/>
+                <InputField label="From Name" value={orgName} onChange={(e: any) => setOrgName(e?.target?.value || e)}/>
               </div>
               <Btn variant="outline" size="sm"><Send size={12}/>Send Test Email</Btn>
             </div>
@@ -1071,17 +1383,59 @@ function OrgSetupSection() {
       )}
 
       {showAddLoc&&(
-        <Modal title="Add Location" onClose={()=>setShowAddLoc(false)}>
+        <Modal title={editingLoc ? "Edit Location" : "Add Location"} onClose={()=>{ setShowAddLoc(false); setEditingLoc(null); }}>
           <div className="space-y-4">
+            <InputField label="Location Name" value={newLocName} onChange={(v: any) => setNewLocName(String(v?.target?.value ?? v))} placeholder="e.g. Seattle HQ or London Office"/>
+            <SelectField label="Location Type" value={newLocType} onChange={(v: any) => setNewLocType(String(v?.target?.value ?? v))} options={["Headquarters","Regional Office","Branch Office","Remote Hub"]}/>
             <InputField label="Address" value={newLocAddr} onChange={(v: any) => setNewLocAddr(String(v?.target?.value ?? v))} placeholder="123 Main Street" required/>
             <div className="grid grid-cols-2 gap-4">
               <InputField label="City" value={newLocCity} onChange={(v: any) => setNewLocCity(String(v?.target?.value ?? v))} placeholder="Seattle" required/>
-              <InputField label="State" value={newLocState} onChange={(v: any) => setNewLocState(String(v?.target?.value ?? v))} placeholder="WA"/>
+              <InputField label="State / Province" value={newLocState} onChange={(v: any) => setNewLocState(String(v?.target?.value ?? v))} placeholder="WA"/>
             </div>
             <InputField label="Timezone" value={newLocTz} onChange={(v: any) => setNewLocTz(String(v?.target?.value ?? v))} placeholder="(UTC-8) Pacific"/>
+
+            <div className="border border-blue-100 bg-blue-50/50 rounded-xl p-3.5 space-y-2.5">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-bold text-gray-800 flex items-center gap-1.5">
+                  <MapPin size={13} className="text-[#5C5CFF]"/>
+                  Geofence Coordinates (Lat & Long)
+                </label>
+                <div className="flex gap-2">
+                  <Btn type="button" variant="outline" size="sm" onClick={handleFetchCoords} disabled={isFetchingCoords}>
+                    {isFetchingCoords ? "Fetching..." : "Fetch via API"}
+                  </Btn>
+                  <Btn type="button" variant="outline" size="sm" onClick={handleUseGps}>
+                    Use GPS
+                  </Btn>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <InputField label="Latitude" value={newLocLat} onChange={(v: any) => setNewLocLat(String(v?.target?.value ?? v))} placeholder="e.g. 47.6062"/>
+                <InputField label="Longitude" value={newLocLng} onChange={(v: any) => setNewLocLng(String(v?.target?.value ?? v))} placeholder="e.g. -122.3321"/>
+              </div>
+              {coordMsg && (
+                <p className={cn("text-[11px] font-medium leading-snug", coordMsg.startsWith("✅") ? "text-green-700" : "text-amber-700")}>
+                  {coordMsg}
+                </p>
+              )}
+            </div>
+
             <div className="flex justify-end gap-3 pt-2 border-t border-gray-200">
-              <Btn variant="outline" onClick={()=>setShowAddLoc(false)}>Cancel</Btn>
-              <Btn onClick={handleAddLocationSubmit} disabled={!newLocCity.trim()||!newLocAddr.trim()}>Add Location</Btn>
+              <Btn variant="outline" onClick={()=>{ setShowAddLoc(false); setEditingLoc(null); }}>Cancel</Btn>
+              <Btn onClick={handleAddLocationSubmit} disabled={!newLocCity.trim()||!newLocAddr.trim()}>{editingLoc ? "Save Location" : "Add Location"}</Btn>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {showAddLevel&&(
+        <Modal title="Add Reporting Level" onClose={()=>setShowAddLevel(false)}>
+          <div className="space-y-4">
+            <InputField label="Level Name" value={newLevelName} onChange={(v: any) => setNewLevelName(String(v?.target?.value ?? v))} placeholder="e.g. Executive Board (C-Suite)" required/>
+            <InputField label="Description" value={newLevelDesc} onChange={(v: any) => setNewLevelDesc(String(v?.target?.value ?? v))} placeholder="e.g. Tier 1 leadership and key decision makers"/>
+            <div className="flex justify-end gap-3 pt-2 border-t border-gray-200">
+              <Btn variant="outline" onClick={()=>setShowAddLevel(false)}>Cancel</Btn>
+              <Btn onClick={handleAddLevelSubmit} disabled={!newLevelName.trim()}>Add Level</Btn>
             </div>
           </div>
         </Modal>
@@ -1099,6 +1453,45 @@ function OrgSetupSection() {
             </div>
           </div>
         </Modal>
+      )}
+
+      {showAddShift&&(
+        <Modal title="Add Shift" onClose={()=>setShowAddShift(false)}>
+          <div className="space-y-4">
+            <InputField label="Shift Name" value={newShiftName} onChange={(v: any) => setNewShiftName(String(v?.target?.value ?? v))} placeholder="e.g. Morning Shift, Night Shift" required/>
+            <SelectField label="Shift Type" value={newShiftType} onChange={(v: any) => setNewShiftType(String(v?.target?.value ?? v))} options={["Fixed","Flexible","Rotational","Split"]}/>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1.5">
+                <label className="block text-xs font-semibold text-gray-600">Start Time</label>
+                <input type="time" value={newShiftStart} onChange={e=>setNewShiftStart(e.target.value)} className="w-full h-10 px-3 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#5C5CFF]"/>
+              </div>
+              <div className="space-y-1.5">
+                <label className="block text-xs font-semibold text-gray-600">End Time</label>
+                <input type="time" value={newShiftEnd} onChange={e=>setNewShiftEnd(e.target.value)} className="w-full h-10 px-3 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#5C5CFF]"/>
+              </div>
+            </div>
+            <SelectField label="Working Days" value={newShiftDays} onChange={(v: any) => setNewShiftDays(String(v?.target?.value ?? v))} options={["Mon - Fri","Mon - Sat","Sun - Thu","Mon - Sun","Custom"]}/>
+            <SelectField label="Grace Period" value={newShiftGrace} onChange={(v: any) => setNewShiftGrace(String(v?.target?.value ?? v))} options={["No grace","5 min","10 min","15 min","20 min","30 min"]}/>
+            <div className="flex justify-end gap-3 pt-2 border-t border-gray-200">
+              <Btn variant="outline" onClick={()=>setShowAddShift(false)}>Cancel</Btn>
+              <Btn onClick={handleAddShiftSubmit} disabled={!newShiftName.trim()}>Create Shift</Btn>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {toastState && (
+        <div className="fixed bottom-6 right-6 z-[200] flex items-center gap-3 bg-gray-900 text-white text-xs px-4 py-3 rounded-xl shadow-2xl transition-all animate-bounce-short">
+          {toastState.type === "success" ? (
+            <CheckCircle size={16} className="text-green-400 flex-shrink-0" />
+          ) : (
+            <AlertTriangle size={16} className="text-red-400 flex-shrink-0" />
+          )}
+          <span className="font-medium">{toastState.msg}</span>
+          <button onClick={() => setToastState(null)} className="ml-2 text-gray-400 hover:text-white p-0.5">
+            <X size={13} />
+          </button>
+        </div>
       )}
     </div>
   );

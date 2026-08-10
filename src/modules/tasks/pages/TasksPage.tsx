@@ -10,7 +10,7 @@ import { EMP_COLORS } from "@/shared/constants/colors";
 import { cn } from "@/shared/utils";
 import { useAuth } from "@/shared/context/AuthContext";
 import { db } from "@/shared/utils/firebase";
-import { collection, onSnapshot, setDoc, doc } from "firebase/firestore";
+import { collection, onSnapshot, setDoc, doc, updateDoc } from "firebase/firestore";
 
 interface TasksPageProps {
   navigate: (p: any, emp?: any, tabOrSection?: string) => void;
@@ -73,6 +73,53 @@ export function TasksPage({
     );
     return () => unsub();
   }, [targetCompanyId]);
+
+  // ── Auto-Overdue Detector ──────────────────────────────────────────────────
+  // Runs immediately on mount and every 60 seconds thereafter.
+  // Any task whose dueDate has passed and isn't Done or Archived gets marked Overdue.
+  useEffect(() => {
+    const markOverdueTasks = async () => {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+
+      const currentTasks = tasksProp || realtimeTasks;
+      const overdueTargets = currentTasks.filter((t) => {
+        if (!t.dueDate) return false;
+        if (t.status === "Done" || t.status === "Archived" || t.status === "Overdue") return false;
+        const due = new Date(t.dueDate);
+        due.setHours(0, 0, 0, 0);
+        return due < today;
+      });
+
+      for (const t of overdueTargets) {
+        const updatedTask = { ...t, status: "Overdue" as const };
+        // Optimistic local update
+        setRealtimeTasks((prev) =>
+          prev.map((pt) => (pt.id === t.id ? updatedTask : pt))
+        );
+        // Persist to Firestore
+        try {
+          await updateDoc(doc(db, "organizations", targetCompanyId, "tasks", t.id), {
+            status: "Overdue",
+          });
+          if (targetCompanyId !== "default") {
+            updateDoc(doc(db, "organizations", "default", "tasks", t.id), {
+              status: "Overdue",
+            }).catch(() => {});
+          }
+        } catch (err) {
+          console.warn("Auto-overdue update failed for task:", t.id, err);
+        }
+      }
+    };
+
+    // Run immediately
+    markOverdueTasks();
+    // Then re-check every 60 seconds
+    const interval = setInterval(markOverdueTasks, 60_000);
+    return () => clearInterval(interval);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [targetCompanyId, realtimeTasks.length]);
 
   const tasks = tasksProp || realtimeTasks;
 
@@ -431,8 +478,14 @@ function TaskCalendarView({
   setSelectedTask: (t: TeamTask) => void;
   isTaskOverdue: (t: TeamTask) => boolean;
 }) {
-  const daysInMonth = 31;
-  const startDayOffset = 3; // Wednesday (0=Sun, 1=Mon, 2=Tue, 3=Wed)
+  const currentDate = new Date();
+  const currentYear = currentDate.getFullYear();
+  const currentMonth = currentDate.getMonth();
+  const monthName = currentDate.toLocaleString('default', { month: 'long' });
+  const shortMonth = currentDate.toLocaleString('default', { month: 'short' });
+  
+  const daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
+  const startDayOffset = new Date(currentYear, currentMonth, 1).getDay();
   const weekdays = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
   const cells: (number | null)[] = [];
@@ -444,14 +497,20 @@ function TaskCalendarView({
   }
 
   const getTasksForDay = (day: number) => {
-    const dateStr = `2026-07-${String(day).padStart(2, "0")}`;
-    return tasks.filter((t) => t.dueDate === dateStr || (t.due && t.due.includes(`Jul ${day}`)));
+    const monthStr = String(currentMonth + 1).padStart(2, "0");
+    const dayStr = String(day).padStart(2, "0");
+    const dateStr = `${currentYear}-${monthStr}-${dayStr}`;
+    return tasks.filter((t) => {
+      return t.dueDate === dateStr || (t.due && (t.due.includes(`${shortMonth} ${day}`) || t.due.includes(`${shortMonth} ${dayStr}`)));
+    });
   };
+
+  const today = currentDate.getDate();
 
   return (
     <div className="flex-1 overflow-auto p-6 flex flex-col text-left">
       <div className="flex justify-between items-center mb-4">
-        <h3 className="text-sm font-bold text-gray-800 uppercase tracking-wider">July 2026</h3>
+        <h3 className="text-sm font-bold text-gray-800 uppercase tracking-wider">{monthName} {currentYear}</h3>
       </div>
       <div className="bg-white rounded-2xl border border-[#E8E9ED] overflow-hidden shadow-sm flex-1 flex flex-col min-h-[480px]">
         {/* Weekday headers */}
@@ -466,7 +525,7 @@ function TaskCalendarView({
         <div className="grid grid-cols-7 grid-rows-5 flex-1 divide-x divide-y divide-[#E8E9ED]">
           {cells.map((day, idx) => {
             const dayTasks = day ? getTasksForDay(day) : [];
-            const isToday = day === 5; // Reference date 2026-07-05
+            const isToday = day === today;
             return (
               <div
                 key={idx}

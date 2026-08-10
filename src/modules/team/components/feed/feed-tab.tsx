@@ -98,9 +98,10 @@ export function FeedTab({
 
   // Firestore Helper Functions
   const savePostToFirestore = async (post: FeedPost) => {
-    if (!companyId || companyId === "default" || !post) return;
+    const targetCompanyId = companyId && companyId !== "default" ? companyId : "default";
+    if (!post) return;
     try {
-      const docRef = doc(db, "organizations", companyId, "team_feed", post.id);
+      const docRef = doc(db, "organizations", targetCompanyId, "team_feed", post.id);
       await setDoc(docRef, JSON.parse(JSON.stringify(post)), { merge: true });
     } catch (err) {
       console.error("Error saving feed post to Firestore:", err);
@@ -108,9 +109,10 @@ export function FeedTab({
   };
 
   const deletePostFromFirestore = async (postId: string) => {
-    if (!companyId || companyId === "default" || !postId) return;
+    const targetCompanyId = companyId && companyId !== "default" ? companyId : "default";
+    if (!postId) return;
     try {
-      await deleteDoc(doc(db, "organizations", companyId, "team_feed", postId));
+      await deleteDoc(doc(db, "organizations", targetCompanyId, "team_feed", postId));
     } catch (err) {
       console.error("Error deleting feed post from Firestore:", err);
     }

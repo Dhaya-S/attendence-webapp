@@ -67,11 +67,11 @@ export function TeamPage({
   }, [activeTab]);
 
   const { user, role, companyId, email, displayName } = useAuth();
+  const targetCompanyId = companyId && companyId !== "default" ? companyId : "default";
   const [dbUsers, setDbUsers] = useState<any[]>([]);
 
   useEffect(() => {
-    if (!companyId || companyId === "default") return;
-    const usersCol = collection(db, "organizations", companyId, "users");
+    const usersCol = collection(db, "organizations", targetCompanyId, "users");
     const unsub = onSnapshot(usersCol, (snap) => {
       const formatRole = (r?: string): string => {
         if (!r) return "";
@@ -109,7 +109,7 @@ export function TeamPage({
       console.warn("Error listening to users in team page:", err);
     });
     return () => unsub();
-  }, [companyId]);
+  }, [targetCompanyId]);
 
   const myTeamMembers = useMemo(() => {
     const baseList = dbUsers.length > 0 ? dbUsers : EMPLOYEES;
@@ -164,8 +164,7 @@ export function TeamPage({
   const [dbLeaveRequests, setDbLeaveRequests] = useState<any[]>([]);
 
   useEffect(() => {
-    if (!companyId || companyId === "default") return;
-    const colRef = collection(db, "organizations", companyId, "leave_requests");
+    const colRef = collection(db, "organizations", targetCompanyId, "leave_requests");
     const unsub = onSnapshot(colRef, (snap) => {
       const list = snap.docs.map(d => ({ id: d.id, ...d.data() }));
       setDbLeaveRequests(list);
@@ -173,7 +172,34 @@ export function TeamPage({
       console.warn("Error listening to leave requests in team-page:", err);
     });
     return () => unsub();
-  }, [companyId]);
+  }, [targetCompanyId]);
+
+  const [dbTasks, setDbTasks] = useState<any[]>([]);
+
+  useEffect(() => {
+    const colRef = collection(db, "organizations", targetCompanyId, "tasks");
+    const unsub = onSnapshot(colRef, (snap) => {
+      const list = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      setDbTasks(list);
+    }, (err) => {
+      console.warn("Error listening to tasks in team-page:", err);
+    });
+    return () => unsub();
+  }, [targetCompanyId]);
+
+  const [orgProfile, setOrgProfile] = useState<any>(null);
+
+  useEffect(() => {
+    const orgRef = doc(db, "organizations", targetCompanyId);
+    const unsub = onSnapshot(orgRef, (snap) => {
+      if (snap.exists()) {
+        setOrgProfile({ id: snap.id, ...snap.data() });
+      }
+    }, (err) => {
+      console.warn("Error listening to organization profile in team-page:", err);
+    });
+    return () => unsub();
+  }, [targetCompanyId]);
 
   const [statusFilter, setStatusFilter] = useState("All");
   const [desigFilter, setDesigFilter] = useState("All");
@@ -214,8 +240,7 @@ export function TeamPage({
   const [posts, setPosts] = useState<FeedPost[]>([]);
 
   useEffect(() => {
-    if (!companyId || companyId === "default") return;
-    const colRef = collection(db, "organizations", companyId, "team_feed");
+    const colRef = collection(db, "organizations", targetCompanyId, "team_feed");
     const unsub = onSnapshot(colRef, (snap) => {
       const rawList = snap.docs.map(d => ({ id: d.id, ...d.data() } as FeedPost));
       
@@ -262,7 +287,7 @@ export function TeamPage({
       console.warn("Error listening to team_feed in team-page:", err);
     });
     return () => unsub();
-  }, [companyId, myTeamMembers, dbUsers, email, user, displayName]);
+  }, [targetCompanyId, myTeamMembers, dbUsers, email, user, displayName]);
 
   const currentUserInfo = useMemo(() => {
     const normalizedEmail = String(email || user?.email || "").toLowerCase();
@@ -375,9 +400,9 @@ export function TeamPage({
   const confirmApproveT = async () => {
     if (!tApproveId) return;
     const isDbReq = dbLeaveRequests.some((x) => x.id === tApproveId);
-    if (isDbReq && companyId && companyId !== "default") {
+    if (isDbReq) {
       try {
-        const docRef = doc(db, "organizations", companyId, "leave_requests", tApproveId);
+        const docRef = doc(db, "organizations", targetCompanyId, "leave_requests", tApproveId);
         await updateDoc(docRef, { status: "Approved" });
       } catch (err) {
         console.error("Error approving leave request in Firestore:", err);
@@ -393,9 +418,9 @@ export function TeamPage({
   const confirmRejectT = async () => {
     if (!tRejectId || !tRejectReason.trim()) return;
     const isDbReq = dbLeaveRequests.some((x) => x.id === tRejectId);
-    if (isDbReq && companyId && companyId !== "default") {
+    if (isDbReq) {
       try {
-        const docRef = doc(db, "organizations", companyId, "leave_requests", tRejectId);
+        const docRef = doc(db, "organizations", targetCompanyId, "leave_requests", tRejectId);
         await updateDoc(docRef, { status: "Rejected", rejectReason: tRejectReason });
       } catch (err) {
         console.error("Error rejecting leave request in Firestore:", err);
@@ -458,6 +483,9 @@ export function TeamPage({
             setLeaveSection={setLeaveSection}
             navigate={navigate}
             teamMembers={myTeamMembers}
+            tasks={dbTasks}
+            orgProfile={orgProfile}
+            allCompanyUsers={dbUsers.length > 0 ? dbUsers : EMPLOYEES}
           />
         )}
 
@@ -470,7 +498,7 @@ export function TeamPage({
             showCreateDiscussion={showCreateDiscussion}
             setShowCreateDiscussion={setShowCreateDiscussion}
             teamMembers={myTeamMembers}
-            companyId={companyId}
+            companyId={targetCompanyId}
             currentUser={currentUserInfo}
           />
         )}
@@ -481,7 +509,7 @@ export function TeamPage({
             showCreateAnnouncement={showCreateAnnouncement}
             setShowCreateAnnouncement={setShowCreateAnnouncement}
             teamMembers={myTeamMembers}
-            companyId={companyId}
+            companyId={targetCompanyId}
             currentUser={currentUserInfo}
           />
         )}
