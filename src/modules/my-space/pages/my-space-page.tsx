@@ -1056,9 +1056,10 @@ export function MySpacePage({
                 shiftEndMinute = parseInt(mm, 10);
              }
           }
+          if (!record.date || typeof record.date !== 'string') return;
           
           const parts = record.date.split("-");
-          if (parts.length !== 3) continue;
+          if (parts.length !== 3) return;
           
           const recordDate = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]));
           recordDate.setHours(shiftEndHour + 6, shiftEndMinute, 0, 0); // 6 hours after shift end time
