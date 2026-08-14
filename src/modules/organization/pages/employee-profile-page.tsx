@@ -1,4 +1,7 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
+import { useAuth } from "@/shared/context/AuthContext";
+import { db } from "@/shared/utils/firebase";
+import { collection, query, where, onSnapshot } from "firebase/firestore";
 import {
   ChevronLeft,
   ChevronRight,
@@ -32,6 +35,14 @@ import {
   SelectField,
 } from "@/shared/components";
 
+function fmtTime(val: any): string {
+  if (!val) return "";
+  if (typeof val === "string") return val;
+  if (val.toDate) return val.toDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  if (val.seconds) return new Date(val.seconds * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  return String(val);
+}
+
 export function EmployeeProfilePage({
   employee,
   navigate,
@@ -44,6 +55,138 @@ export function EmployeeProfilePage({
   const [tab, setTab] = useState("Activities");
   const [showEdit, setShowEdit] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
+  
+  const { companyId } = useAuth();
+  const targetCompanyId = companyId && companyId !== "default" ? companyId : "default";
+  const [activities, setActivities] = useState<any[]>([]);
+  const [rawAttendance, setRawAttendance] = useState<any[]>([]);
+  const [rawLeaves, setRawLeaves] = useState<any[]>([]);
+
+  useEffect(() => {
+    if (!employee.email && !employee.id) return;
+    
+    const email = String(employee.email || employee.workEmail || "").toLowerCase();
+    
+    // We will merge records from Attendance, Leave, and Tasks
+    let attRecords: any[] = [];
+    let leaveRecords: any[] = [];
+    let taskRecords: any[] = [];
+    
+    const updateActivities = () => {
+      const merged = [...attRecords, ...leaveRecords, ...taskRecords];
+      // Sort by date/time descending
+      merged.sort((a, b) => {
+        const timeA = new Date(a.sortDate || 0).getTime();
+        const timeB = new Date(b.sortDate || 0).getTime();
+        return timeB - timeA;
+      });
+      setActivities(merged);
+    };
+
+    // 1. Attendance Check-ins
+    const unsubAtt = onSnapshot(collection(db, "organizations", targetCompanyId, "users", employee.email || employee.id, "attendance"), (snap) => {
+      setRawAttendance(snap.docs.map(d => d.data()));
+      
+      attRecords = snap.docs.map(d => {
+        const data = d.data();
+        const dateStr = data.date;
+        const timeStr = fmtTime(data.checkInTime || data.checkIn);
+        let sortDate = new Date();
+        if (dateStr) {
+          sortDate = new Date(dateStr);
+          if (timeStr && timeStr !== "—") {
+            const timeMatch = timeStr.match(/(\d+):(\d+)\s*(AM|PM)?/i);
+            if (timeMatch) {
+              let h = parseInt(timeMatch[1], 10);
+              if (timeMatch[3]?.toUpperCase() === "PM" && h < 12) h += 12;
+              if (timeMatch[3]?.toUpperCase() === "AM" && h === 12) h = 0;
+              sortDate.setHours(h, parseInt(timeMatch[2], 10), 0);
+            }
+          }
+        }
+        return {
+          id: d.id,
+          action: data.status === "On Leave" ? "Leave taken" : data.status === "WFH" ? "Checked in remotely" : "Checked in",
+          time: `${dateStr || "Unknown Date"} ${timeStr ? ", " + timeStr : ""}`,
+          sortDate: sortDate.toISOString(),
+          icon: Clock,
+          color: "text-green-600 bg-green-50"
+        };
+      });
+      updateActivities();
+    });
+
+    // 2. Leave Requests
+    const leaveQ = query(collection(db, "organizations", targetCompanyId, "leave_requests"), where("applicantEmail", "==", email));
+    const unsubLeave = onSnapshot(leaveQ, (snap) => {
+      setRawLeaves(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+      
+      leaveRecords = snap.docs.map(d => {
+        const data = d.data();
+        return {
+          id: d.id,
+          action: `Leave ${data.status?.toLowerCase() || "requested"} – ${data.type || "Leave"} ${data.duration || ""}`,
+          time: fmtDate(data.createdAt || data.date),
+          sortDate: data.createdAt || data.date || new Date().toISOString(),
+          icon: CalendarDays,
+          color: data.status === "Approved" ? "text-purple-600 bg-purple-50" : data.status === "Rejected" ? "text-red-600 bg-red-50" : "text-amber-600 bg-amber-50"
+        };
+      });
+      updateActivities();
+    });
+
+    // 3. Tasks
+    const tasksQ = query(collection(db, "organizations", targetCompanyId, "tasks"));
+    const unsubTasks = onSnapshot(tasksQ, (snap) => {
+      // Filter manually since assignees format might vary
+      taskRecords = snap.docs
+        .map(d => ({ id: d.id, ...d.data() } as any))
+        .filter(t => 
+          t.assigneeEmail?.toLowerCase() === email ||
+          t.assigneeId === employee.id || 
+          t.assignee?.toLowerCase().includes(employee.name?.toLowerCase()) ||
+          (t.assignees && Array.isArray(t.assignees) && t.assignees.some((a: any) => 
+            (typeof a === 'string' && a.toLowerCase() === email) || 
+            (a.email && a.email.toLowerCase() === email)
+          ))
+        )
+        .map(t => ({
+          id: t.id,
+          action: `Task ${t.status === "Completed" ? "completed" : "assigned"}: ${t.title || "Unnamed task"}`,
+          time: fmtDate(t.createdAt || t.dueDate),
+          sortDate: t.createdAt || t.dueDate || new Date().toISOString(),
+          icon: ClipboardList,
+          color: t.status === "Completed" ? "text-blue-600 bg-blue-50" : "text-gray-600 bg-gray-100"
+        }));
+      updateActivities();
+    });
+
+    return () => {
+      unsubAtt();
+      unsubLeave();
+      unsubTasks();
+    };
+  }, [employee, targetCompanyId]);
+
+  const presentCount = rawAttendance.filter(a => ["Checked In", "Present", "Checked Out", "WFH"].includes(a.status)).length;
+  const lateCount = rawAttendance.filter(a => a.status === "Late").length;
+  let totalMins = 0;
+  let daysWithHours = 0;
+  rawAttendance.forEach(a => {
+    const hw = a.hoursWorked || a.workingHours;
+    if (hw && hw !== "—" && hw !== "0h 00m") {
+      const match = hw.match(/(\d+)h\s*(\d+)m/);
+      if (match) {
+         totalMins += parseInt(match[1], 10) * 60 + parseInt(match[2], 10);
+         daysWithHours++;
+      }
+    }
+  });
+  const avgHrs = daysWithHours > 0 ? (totalMins / daysWithHours / 60).toFixed(1) + " hrs" : "0 hrs";
+  const attRate = rawAttendance.length > 0 ? ((presentCount + lateCount) / rawAttendance.length * 100).toFixed(1) + "%" : "0%";
+  
+  const sortedAttendance = [...rawAttendance].sort((a, b) => new Date(b.date || 0).getTime() - new Date(a.date || 0).getTime());
+  const sortedLeaves = [...rawLeaves].sort((a, b) => new Date(b.createdAt || b.date || 0).getTime() - new Date(a.createdAt || a.date || 0).getTime());
 
   return (
     <div className="flex flex-col h-full text-left">
@@ -224,35 +367,7 @@ export function EmployeeProfilePage({
               </div>
             </div>
             <div className="space-y-4">
-              <div className="bg-white rounded-lg border border-gray-200 p-4">
-                <h4 className="text-sm font-semibold text-gray-800 mb-3">
-                  Leave Balance
-                </h4>
-                {[
-                  ["Annual", 18, 12],
-                  ["Sick", 10, 8],
-                  ["Casual", 6, 5],
-                ].map(([type, total, remaining]) => (
-                  <div key={type as string} className="mb-3">
-                    <div className="flex justify-between text-xs text-gray-605 mb-1">
-                      <span>{type}</span>
-                      <span className="font-medium">
-                        {remaining}/{total} days
-                      </span>
-                    </div>
-                    <div className="w-full bg-gray-100 rounded-full h-1.5">
-                      <div
-                        className="h-1.5 bg-[#5C5CFF] rounded-full"
-                        style={{
-                          width: `${
-                            ((remaining as number) / (total as number)) * 100
-                          }%`,
-                        }}
-                      />
-                    </div>
-                  </div>
-                ))}
-              </div>
+
               <div className="bg-white rounded-lg border border-gray-200 p-4">
                 <h4 className="text-sm font-semibold text-gray-800 mb-3">
                   Quick Actions
@@ -322,66 +437,41 @@ export function EmployeeProfilePage({
         )}
         {tab === "Activities" && (
           <div className="space-y-3 max-w-2xl">
-            {[
-              {
-                action: "Checked in",
-                time: "Today, 9:02 AM",
-                icon: Clock,
-                color: "text-green-600 bg-green-50",
-              },
-              {
-                action: "Leave approved – Annual Leave 2 days",
-                time: "Yesterday, 3:15 PM",
-                icon: CalendarDays,
-                color: "text-purple-600 bg-purple-50",
-              },
-              {
-                action: "Task completed: Q2 report submission",
-                time: "Jun 27, 2:00 PM",
-                icon: ClipboardList,
-                color: "text-blue-600 bg-blue-50",
-              },
-              {
-                action: "Shift changed to General (9AM–6PM)",
-                time: "Jun 25, 11:30 AM",
-                icon: AlertCircle,
-                color: "text-amber-600 bg-amber-50",
-              },
-              {
-                action: "Profile updated by Admin",
-                time: "Jun 20, 4:00 PM",
-                icon: Edit,
-                color: "text-gray-600 bg-gray-100",
-              },
-            ].map(({ action, time, icon: Icon, color }, i) => (
-              <div
-                key={i}
-                className="flex items-start gap-3 bg-white border border-gray-200 rounded-xl p-4"
-              >
+            {activities.length > 0 ? (
+              activities.map(({ action, time, icon: Icon, color }, i) => (
                 <div
-                  className={cn(
-                    "w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0",
-                    color.split(" ")[1]
-                  )}
+                  key={i}
+                  className="flex items-start gap-3 bg-white border border-gray-200 rounded-xl p-4"
                 >
-                  <Icon size={14} className={color.split(" ")[0]} />
+                  <div
+                    className={cn(
+                      "w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0",
+                      color.split(" ")[1]
+                    )}
+                  >
+                    <Icon size={14} className={color.split(" ")[0]} />
+                  </div>
+                  <div className="flex-1">
+                    <p className="text-sm text-gray-808">{action}</p>
+                    <p className="text-xs text-gray-400 mt-0.5">{time}</p>
+                  </div>
                 </div>
-                <div className="flex-1">
-                  <p className="text-sm text-gray-808">{action}</p>
-                  <p className="text-xs text-gray-400 mt-0.5">{time}</p>
-                </div>
+              ))
+            ) : (
+              <div className="text-center py-10">
+                <p className="text-sm text-gray-500">No activities found.</p>
               </div>
-            ))}
+            )}
           </div>
         )}
         {tab === "Attendance" && (
           <div className="space-y-4">
             <div className="grid grid-cols-4 gap-4">
               {[
-                ["Present Days", "22", "of 26 working days"],
-                ["Late Arrivals", "2", "this month"],
-                ["Avg Hours", "9.1 hrs", "per day"],
-                ["Attendance Rate", "97.2%", "this month"],
+                ["Present Days", presentCount.toString(), `of ${rawAttendance.length} recorded days`],
+                ["Late Arrivals", lateCount.toString(), "total recorded"],
+                ["Avg Hours", avgHrs, "per day"],
+                ["Attendance Rate", attRate, "overall"],
               ].map(([t, v, s]) => (
                 <div
                   key={t as string}
@@ -396,7 +486,7 @@ export function EmployeeProfilePage({
             <div className="bg-white rounded-lg border border-gray-200">
               <div className="px-5 py-3 border-b border-gray-100 flex items-center justify-between">
                 <h4 className="text-sm font-semibold text-gray-800 font-semibold">
-                  Log – June 2024
+                  Log
                 </h4>
                 <Btn variant="outline" size="sm">
                   <Download size={12} />
@@ -419,47 +509,87 @@ export function EmployeeProfilePage({
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
-                  {[
-                    ["Jun 28, Fri", "09:02", "18:15", "9h 13m", "Present"],
-                    ["Jun 27, Thu", "09:00", "18:05", "9h 05m", "Present"],
-                    ["Jun 26, Wed", "09:45", "18:30", "8h 45m", "Late"],
-                    ["Jun 25, Tue", "09:01", "18:00", "8h 59m", "Present"],
-                    ["Jun 21, Fri", "–", "–", "–", "On Leave"],
-                  ].map(([d, ci, co, h, s]) => (
-                    <tr key={d as string} className="hover:bg-gray-50">
-                      <td className="px-5 py-3 text-gray-707">{d}</td>
-                      <td className="px-5 py-3 font-mono text-xs text-gray-707">
-                        {ci}
-                      </td>
-                      <td className="px-5 py-3 font-mono text-xs text-gray-707">
-                        {co}
-                      </td>
-                      <td className="px-5 py-3 font-mono text-xs text-gray-600">
-                        {h}
-                      </td>
-                      <td className="px-5 py-3">
-                        <StatusBadge status={s as string} />
+                  {sortedAttendance.length > 0 ? (
+                    sortedAttendance.map((a, idx) => (
+                      <tr key={idx} className="hover:bg-gray-50">
+                        <td className="px-5 py-3 text-gray-707">{fmtDate(a.date)}</td>
+                        <td className="px-5 py-3 font-mono text-xs text-gray-707">
+                          {fmtTime(a.checkInTime || a.checkIn) || "—"}
+                        </td>
+                        <td className="px-5 py-3 font-mono text-xs text-gray-707">
+                          {fmtTime(a.checkOutTime || a.checkOut) || "—"}
+                        </td>
+                        <td className="px-5 py-3 font-mono text-xs text-gray-600">
+                          {a.hoursWorked || a.workingHours || "—"}
+                        </td>
+                        <td className="px-5 py-3">
+                          <StatusBadge status={a.status || "Absent"} />
+                        </td>
+                      </tr>
+                    ))
+                  ) : (
+                    <tr>
+                      <td colSpan={5} className="px-5 py-8 text-center text-gray-500 text-sm">
+                        No attendance records found.
                       </td>
                     </tr>
-                  ))}
+                  )}
                 </tbody>
               </table>
             </div>
           </div>
         )}
-        {(tab === "Leave" || tab === "Shift") && (
+        {tab === "Leave" && (
+          <div className="bg-white rounded-lg border border-gray-200">
+            <div className="px-5 py-3 border-b border-gray-100 flex items-center justify-between">
+              <h4 className="text-sm font-semibold text-gray-800">Leave History</h4>
+            </div>
+            <table className="w-full text-sm">
+              <thead className="bg-gray-50">
+                <tr>
+                  {["Date Applied", "Type", "Duration", "Status"].map((h) => (
+                    <th key={h} className="px-5 py-2.5 text-left text-xs font-medium text-gray-500 uppercase">
+                      {h}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {sortedLeaves.length > 0 ? (
+                  sortedLeaves.map((lv, idx) => (
+                    <tr key={idx} className="hover:bg-gray-50">
+                      <td className="px-5 py-3 text-gray-707">{fmtDate(lv.createdAt || lv.date)}</td>
+                      <td className="px-5 py-3 text-gray-707">{lv.type || "Leave"}</td>
+                      <td className="px-5 py-3 text-gray-707">{lv.duration || "—"}</td>
+                      <td className="px-5 py-3">
+                        <StatusBadge status={lv.status || "Pending"} />
+                      </td>
+                    </tr>
+                  ))
+                ) : (
+                  <tr>
+                    <td colSpan={4} className="px-5 py-8 text-center text-gray-500 text-sm">
+                      No leave records found.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        )}
+        {tab === "Shift" && (
           <div className="bg-white rounded-lg border border-gray-200 p-8 text-center text-gray-500">
             <div className="w-12 h-12 rounded-full bg-gray-100 flex items-center justify-center mx-auto mb-3">
-              {tab === "Leave" && (
-                <CalendarDays size={20} className="text-gray-400" />
-              )}
-              {tab === "Shift" && <Clock size={20} className="text-gray-400" />}
+              <Clock size={20} className="text-gray-400" />
             </div>
             <p className="text-sm font-medium text-gray-708 mb-1">
-              {tab} – {employee.name}
+              Current Shift Assignment
             </p>
-            <p className="text-xs text-gray-400">
-              All {tab.toLowerCase()} data appears here
+            <p className="text-base text-gray-800 font-medium mt-2">
+              {employee.shift || "General Shift"}
+            </p>
+            <p className="text-xs text-gray-500 mt-1">
+              {employee.branch || "Headquarters"}
             </p>
           </div>
         )}

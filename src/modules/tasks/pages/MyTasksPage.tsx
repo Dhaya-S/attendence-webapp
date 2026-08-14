@@ -4,6 +4,9 @@ import { TaskBoard } from "../components/Board/task-board";
 import { TaskFilters } from "../components/Board/TaskFilters";
 import { CreateTaskDrawer } from "../components/create-task-drawer";
 import { TaskDetailsDrawer } from "../components/task-details-drawer";
+import { useAuth } from "@/shared/context/AuthContext";
+import { db } from "@/shared/utils/firebase";
+import { doc, updateDoc } from "firebase/firestore";
 
 interface MyTasksPageProps {
   navigate: (p: any, emp?: any, tabOrSection?: string) => void;
@@ -31,7 +34,10 @@ export function MyTasksPage({
 }: MyTasksPageProps) {
   const [selectedTask, setSelectedTask] = useState<TeamTask | null>(null);
 
-  // Filter states
+  const { companyId } = useAuth();
+  const targetCompanyId = companyId && companyId !== "default" ? companyId : "default";
+
+  // State for filters
   const [priorityFilter, setPriorityFilter] = useState("All");
   const [statusFilter, setStatusFilter] = useState("All");
   const [dueDateFilter, setDueDateFilter] = useState("All");
@@ -56,11 +62,16 @@ export function MyTasksPage({
         isOpen={!!selectedTask}
         onClose={() => setSelectedTask(null)}
         task={selectedTask}
-        onUpdateTask={(updatedTask) => {
+        onUpdateTask={async (updatedTask) => {
           setTasks((prev) =>
             prev.map((t) => (t.id === updatedTask.id ? updatedTask : t))
           );
           setSelectedTask(updatedTask);
+          try {
+            await updateDoc(doc(db, "organizations", targetCompanyId, "tasks", updatedTask.id), updatedTask as any);
+          } catch (err) {
+            console.error("Failed to save task update:", err);
+          }
         }}
       />
 

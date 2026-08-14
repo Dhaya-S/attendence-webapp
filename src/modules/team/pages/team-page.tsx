@@ -8,11 +8,12 @@ import { ReporteesTab } from "../components/reportees/reportees-tab";
 import { ApprovalsTab } from "../components/approvals/approvals-tab";
 import { FeedTab } from "../components/feed/feed-tab";
 import { AnnouncementsTab } from "../components/announcements/announcements-tab";
+import { CalendarTab } from "../components/calendar/calendar-tab";
 import { EMPLOYEES } from "@/modules/organization/data/employees";
 import { LEAVE_REQUESTS } from "@/modules/leave/data/leave-requests";
 import { useAuth } from "@/shared/context/AuthContext";
 import { db } from "@/shared/utils/firebase";
-import { collection, onSnapshot, doc, updateDoc } from "firebase/firestore";
+import { collection, onSnapshot, doc, updateDoc, query, where } from "firebase/firestore";
 
 interface TeamPageProps {
   navigate: (p: AppPage, emp?: any, tabOrSection?: string) => void;
@@ -69,6 +70,20 @@ export function TeamPage({
   const { user, role, companyId, email, displayName } = useAuth();
   const targetCompanyId = companyId && companyId !== "default" ? companyId : "default";
   const [dbUsers, setDbUsers] = useState<any[]>([]);
+  const [dbAttendance, setDbAttendance] = useState<any[]>([]);
+
+  useEffect(() => {
+    const todayStr = new Date().toLocaleDateString("en-CA");
+    const attCol = collection(db, "organizations", targetCompanyId, "attendance");
+    const q = query(attCol, where("date", "==", todayStr));
+    const unsub = onSnapshot(q, (snap) => {
+      const list = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      setDbAttendance(list);
+    }, (err) => {
+      console.warn("Error listening to today's attendance in team page:", err);
+    });
+    return () => unsub();
+  }, [targetCompanyId]);
 
   useEffect(() => {
     const usersCol = collection(db, "organizations", targetCompanyId, "users");
@@ -112,7 +127,26 @@ export function TeamPage({
   }, [targetCompanyId]);
 
   const myTeamMembers = useMemo(() => {
-    const baseList = dbUsers.length > 0 ? dbUsers : EMPLOYEES;
+    let baseList = dbUsers.length > 0 ? dbUsers : EMPLOYEES;
+
+    // Apply real-time daily attendance data, overriding stale data from previous days on the user doc
+    baseList = baseList.map(u => {
+      const att = dbAttendance.find(a => a.employeeId === u.id || a.email === u.email || a.workEmail === u.workEmail);
+      if (att) {
+        return {
+          ...u,
+          attendanceStatus: att.status || "Present",
+          lastCheckIn: att.checkInTime || att.checkIn || undefined,
+          lastCheckOut: att.checkOutTime || att.checkOut || undefined
+        };
+      }
+      return {
+        ...u,
+        attendanceStatus: "Absent",
+        lastCheckIn: undefined,
+        lastCheckOut: undefined
+      };
+    });
 
     const normalizedEmail = String(email || user?.email || "").toLowerCase();
     const currentUserProfile = baseList.find(e => String(e.email || e.workEmail || "").toLowerCase() === normalizedEmail);
@@ -158,7 +192,7 @@ export function TeamPage({
 
     const empDept = currentUserProfile?.dept || currentUserProfile?.department || "General";
     return baseList.filter(e => (e.dept || e.department) === empDept);
-  }, [dbUsers, email, user, role, displayName]);
+  }, [dbUsers, dbAttendance, email, user, role, displayName]);
 
   // Sync activeTab to local tab state
   const [dbLeaveRequests, setDbLeaveRequests] = useState<any[]>([]);
@@ -503,7 +537,7 @@ export function TeamPage({
           />
         )}
 
-        {/* ── ANNOUNCEMENTS TAB ── */}
+        {/* 📅 ANNOUNCEMENTS TAB 📅 */}
         {tab === "Announcements" && (
           <AnnouncementsTab
             showCreateAnnouncement={showCreateAnnouncement}
@@ -514,7 +548,16 @@ export function TeamPage({
           />
         )}
 
-        {/* ── REPORTEES TAB ── */}
+        {/* 📅 CALENDAR TAB 📅 */}
+        {tab === "Calendar" && (
+          <CalendarTab
+            targetCompanyId={targetCompanyId}
+            users={dbUsers.length > 0 ? dbUsers : EMPLOYEES}
+            tasks={dbTasks}
+          />
+        )}
+
+        {/* 📅 REPORTEES TAB 📅 */}
         {tab === "Reportees" && (
           <ReporteesTab
             filtered={filtered}

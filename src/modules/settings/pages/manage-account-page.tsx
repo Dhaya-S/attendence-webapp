@@ -753,12 +753,34 @@ function OrgSetupSection() {
     }
     setCoordMsg("Fetching GPS location...");
     navigator.geolocation.getCurrentPosition(
-      (pos) => {
+      async (pos) => {
         const latVal = pos.coords.latitude.toFixed(6);
         const lonVal = pos.coords.longitude.toFixed(6);
         setNewLocLat(latVal);
         setNewLocLng(lonVal);
         setCoordMsg(`✅ GPS Coords: Lat ${latVal}, Lng ${lonVal}`);
+        
+        // Reverse Geocoding if address is empty
+        if (!newLocAddr || !newLocCity) {
+          setCoordMsg(`✅ GPS Coords: Lat ${latVal}, Lng ${lonVal}. Fetching address...`);
+          try {
+            const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${latVal}&lon=${lonVal}`);
+            const data = await res.json();
+            if (data && data.address) {
+              const road = data.address.road || data.address.suburb || data.address.neighbourhood || data.name || "";
+              const city = data.address.city || data.address.town || data.address.county || "";
+              const state = data.address.state || "";
+              
+              setNewLocAddr(prev => prev || road);
+              setNewLocCity(prev => prev || city);
+              setNewLocState(prev => prev || state);
+              setCoordMsg(`✅ GPS Coords & Address Fetched!`);
+            }
+          } catch (e) {
+            console.warn("Reverse geocode failed", e);
+            setCoordMsg(`✅ GPS Coords Fetched (Address lookup failed)`);
+          }
+        }
       },
       (err) => {
         setCoordMsg(`⚠️ GPS error: ${err.message}`);

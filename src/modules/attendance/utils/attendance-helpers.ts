@@ -70,6 +70,12 @@ export const getAttendanceDetails = (emp: any) => {
       checkIn = emp.lastCheckIn || "—";
       checkOut = emp.lastCheckOut || "—";
       workingHours = emp.lastCheckIn && emp.lastCheckOut ? calculateWorkingHours(emp.lastCheckIn, emp.lastCheckOut) : "—";
+    } else if (statusLower === "absent") {
+      displayStatus = "Absent";
+      dotColor = "bg-gray-300";
+      checkIn = "—";
+      checkOut = "—";
+      workingHours = "—";
     }
 
     if (checkIn !== "—" && !checkIn.includes("AM") && !checkIn.includes("PM")) {
@@ -88,45 +94,9 @@ export const getAttendanceDetails = (emp: any) => {
     };
   }
 
-  // Fallback to static records
-  const record = ATTENDANCE_RECORDS.find(
-    (r) => r.id === emp.id || r.name === emp.name
-  );
-  if (record) {
-    const status = record.status;
-    let displayStatus = "Checked Out";
-    let dotColor = "bg-gray-300";
 
-    if (status === "Present") {
-      displayStatus = "Checked In";
-      dotColor = "bg-green-500 animate-pulse";
-    } else if (status === "Late") {
-      displayStatus = "Late";
-      dotColor = "bg-amber-500";
-    } else if (status === "WFH") {
-      displayStatus = "WFH";
-      dotColor = "bg-blue-500";
-    } else if (status === "On Leave") {
-      displayStatus = "On Leave";
-      dotColor = "bg-purple-500";
-    } else if (status === "Absent") {
-      displayStatus = "Checked Out";
-      dotColor = "bg-gray-300";
-    }
 
-    return {
-      status: displayStatus,
-      dotColor,
-      checkIn: record.checkIn !== "–" ? record.checkIn + " AM" : "–",
-      checkOut: record.checkOut !== "–" ? record.checkOut + " PM" : "–",
-      workingHours:
-        record.hours > 0
-          ? `${Math.floor(record.hours)}h ${Math.round((record.hours % 1) * 60)}m`
-          : "–",
-    };
-  }
-
-  let displayStatus = "Checked Out";
+  let displayStatus = "Absent";
   let dotColor = "bg-gray-300";
   if (emp.status === "On Leave") {
     displayStatus = "On Leave";

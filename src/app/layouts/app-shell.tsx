@@ -338,7 +338,7 @@ export function AppShell() {
   } else if (page === "team") {
     headerTabs = ["Overview", "Reportees"];
     if (hasPermission("team-approval")) headerTabs.push("Approvals");
-    headerTabs.push("Feed", "Announcements");
+    headerTabs.push("Feed", "Announcements", "Calendar");
     activeHeaderTab = teamTab;
     onHeaderTabChange = setTeamTab;
   } else if (page === "organization") {

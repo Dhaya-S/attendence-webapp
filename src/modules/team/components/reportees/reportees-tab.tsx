@@ -23,7 +23,7 @@ export function ReporteesTab({
 
   filtered.forEach((e) => {
     const details = getAttendanceDetails(e);
-    if (details.status === "Checked In" || details.status === "Late" || details.status === "WFH") {
+    if (details.status === "Checked In" || details.status === "Late" || details.status === "WFH" || details.status === "Checked Out") {
       presentCount++;
     } else if (details.status === "On Leave" || details.status === "Leave") {
       leaveCount++;
@@ -102,7 +102,7 @@ export function ReporteesTab({
                     
                     let mappedStatus = "Absent";
                     let mappedColor = "bg-gray-300";
-                    if (att.status === "Checked In" || att.status === "Late" || att.status === "WFH") {
+                    if (att.status === "Checked In" || att.status === "Late" || att.status === "WFH" || att.status === "Checked Out") {
                       mappedStatus = "Present";
                       mappedColor = "bg-green-500";
                     } else if (att.status === "On Leave" || att.status === "Leave") {
@@ -187,7 +187,7 @@ export function ReporteesTab({
                 
                 let mappedStatus = "Absent";
                 let mappedColor = "bg-gray-300";
-                if (att.status === "Checked In" || att.status === "Late" || att.status === "WFH") {
+                if (att.status === "Checked In" || att.status === "Late" || att.status === "WFH" || att.status === "Checked Out") {
                   mappedStatus = "Present";
                   mappedColor = "bg-green-500";
                 } else if (att.status === "On Leave" || att.status === "Leave") {

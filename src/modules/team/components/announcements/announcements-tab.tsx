@@ -118,7 +118,7 @@ export function AnnouncementsTab({
           return {
             id: docSnap.id,
             title: data.title || "Announcement",
-            body: data.body || "",
+            body: data.body || data.message || data.content || "",
             author: data.author || "Admin",
             authorEmail: data.authorEmail || "",
             time: formattedDate,
@@ -286,7 +286,16 @@ export function AnnouncementsTab({
 
       await addDoc(colRef, {
         ...newAnn,
+        companyId: compId,
+        message: annMessage.trim(),
+        content: annMessage.trim(),
+        authorName: currentUser?.name || "Admin",
+        audience: audienceType === "all" ? "all" : "particular",
         createdAt: serverTimestamp(),
+        timestamp: serverTimestamp(),
+        likes: 0,
+        likedBy: [],
+        commentsCount: 0,
       });
     } catch (err) {
       console.warn("Error creating announcement in Firestore:", err);

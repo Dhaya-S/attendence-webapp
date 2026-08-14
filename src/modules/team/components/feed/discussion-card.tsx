@@ -357,7 +357,8 @@ export function DiscussionCard({
       {post.reactions.length > 0 && (
         <div className="flex items-center gap-1.5 flex-wrap mt-3.5">
           {post.reactions.map((r) => {
-            const hasReacted = r.users.includes(currentUser?.name || "") || (!!currentUser?.email && r.users.includes(currentUser.email));
+            const usersList = r.users || [];
+            const hasReacted = usersList.includes(currentUser?.name || "") || (!!currentUser?.email && usersList.includes(currentUser.email));
             return (
               <button
                 key={r.emoji}
@@ -368,10 +369,10 @@ export function DiscussionCard({
                     ? "border-[#5C5CFF]/30 bg-[#EEF2FF] text-[#5C5CFF] font-bold"
                     : "border-gray-150 hover:border-gray-205 text-gray-500 bg-white"
                 )}
-                title={r.users.join(", ")}
+                title={usersList.join(", ")}
               >
                 <span>{r.emoji}</span>
-                <span>{r.users.length}</span>
+                <span>{usersList.length}</span>
               </button>
             );
           })}
@@ -463,7 +464,7 @@ export function DiscussionCard({
                                 className="px-1.5 py-0.5 bg-white border border-gray-150 rounded-full text-[10px] text-gray-605 hover:bg-gray-100 flex items-center gap-0.5 font-bold cursor-pointer"
                               >
                                 <span>{cr.emoji}</span>
-                                <span>{cr.users.length}</span>
+                                <span>{(cr.users || []).length}</span>
                               </button>
                             ))}
                           </div>

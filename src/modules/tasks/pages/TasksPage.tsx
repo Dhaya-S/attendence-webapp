@@ -282,11 +282,16 @@ export function TasksPage({
         isOpen={!!selectedTask}
         onClose={() => setSelectedTask(null)}
         task={selectedTask}
-        onUpdateTask={(updatedTask) => {
+        onUpdateTask={async (updatedTask) => {
           setTasks((prev) =>
             prev.map((t) => (t.id === updatedTask.id ? updatedTask : t))
           );
           setSelectedTask(updatedTask);
+          try {
+            await updateDoc(doc(db, "organizations", targetCompanyId, "tasks", updatedTask.id), updatedTask as any);
+          } catch (err) {
+            console.error("Failed to save task update:", err);
+          }
         }}
       />
 
