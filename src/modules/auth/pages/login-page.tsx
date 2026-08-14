@@ -142,11 +142,7 @@ export function LoginPage({ onLogin }: { onLogin: () => void }) {
 
       localStorage.removeItem("hrms_setup_completed");
       localStorage.setItem("hrms_just_registered", "true");
-      if (onRegister) {
-        onRegister();
-      } else {
-        onLogin();
-      }
+      onLogin();
     } catch (err: any) {
       console.error("Account creation failed:", err);
       setError(err.message || "Failed to create account. Please try again.");

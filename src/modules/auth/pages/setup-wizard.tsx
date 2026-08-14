@@ -265,6 +265,8 @@ export function SetupWizard({ onComplete, initialStep = 0 }: { onComplete:()=>vo
   const [editingLocation, setEditingLocation] = useState<string|null>(null);
   const [locationForm, setLocationForm] = useState({name:"",address:"",city:"",state:"",country:"",pincode:"",lat:"",lng:"",radius:"200m",tz:"(UTC+5:30) IST",contact:"",phone:""});
   const [isDetectingLocation, setIsDetectingLocation] = useState(false);
+  const [isFetchingCoords, setIsFetchingCoords] = useState(false);
+  const [coordMsg, setCoordMsg] = useState<string | null>(null);
   const [mapsLoaded, setMapsLoaded] = useState(false);
   const [mapsLoadError, setMapsLoadError] = useState(false);
 
@@ -455,11 +457,40 @@ export function SetupWizard({ onComplete, initialStep = 0 }: { onComplete:()=>vo
     }
   }, [showAddLocation]);
 
+  // Geocoding API handler using OpenStreetMap Nominatim API
+  const handleFetchCoords = async () => {
+    const query = [locationForm.address, locationForm.city, locationForm.state].filter(Boolean).join(", ");
+    if (!query.trim()) {
+      setCoordMsg("⚠️ Please enter Address or City first.");
+      return;
+    }
+    setIsFetchingCoords(true);
+    setCoordMsg(null);
+    try {
+      const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&limit=1&q=${encodeURIComponent(query)}`);
+      const data = await res.json();
+      if (Array.isArray(data) && data.length > 0 && data[0].lat && data[0].lon) {
+        const latVal = parseFloat(data[0].lat).toFixed(6);
+        const lonVal = parseFloat(data[0].lon).toFixed(6);
+        setLocationForm(f => ({ ...f, lat: latVal, lng: lonVal }));
+        setCoordMsg(`📍 Found coords for: ${data[0].display_name.slice(0, 50)}...`);
+      } else {
+        setCoordMsg("⚠️ No coordinates found for this address.");
+      }
+    } catch (err) {
+      console.error(err);
+      setCoordMsg("⚠️ Error fetching coordinates.");
+    } finally {
+      setIsFetchingCoords(false);
+    }
+  };
+
   // Live GPS Location Detection (Strictly GPS / Google Geocoding, No IP Location)
   const handleDetectCurrentLocation = () => {
     setIsDetectingLocation(true);
-
+    setCoordMsg("Fetching GPS location...");
     if (!navigator.geolocation) {
+      setCoordMsg("⚠️ Geolocation is not supported by your browser.");
       console.error("Browser does not support Geolocation API.");
       alert("Browser does not support Live Geolocation. Please type your location address above.");
       setIsDetectingLocation(false);
@@ -478,6 +509,7 @@ export function SetupWizard({ onComplete, initialStep = 0 }: { onComplete:()=>vo
         try {
           const latitude = position.coords.latitude;
           const longitude = position.coords.longitude;
+          setCoordMsg(`📍 GPS Coords: Lat ${latitude.toFixed(6)}, Lng ${longitude.toFixed(6)}`);
 
           console.log("[GeoDebug] Raw GPS coords:", latitude, longitude);
           console.log("[GeoDebug] Accuracy (meters):", position.coords.accuracy);
@@ -636,6 +668,7 @@ export function SetupWizard({ onComplete, initialStep = 0 }: { onComplete:()=>vo
   const [lateMarkTime, setLateMarkTime] = useState("09:05 AM");
   const [halfDayThreshold, setHalfDayThreshold] = useState("3 hours");
   const [overtimeEligibility, setOvertimeEligibility] = useState("All Employees");
+  const [isGeofencingEnabled, setIsGeofencingEnabled] = useState(false);
   const [geofenceCheckin, setGeofenceCheckin] = useState("Required");
 
   const [attMethods, setAttMethods] = useState([
@@ -825,7 +858,7 @@ export function SetupWizard({ onComplete, initialStep = 0 }: { onComplete:()=>vo
         <p className="text-sm text-gray-500">Add physical office locations. These are used for geo-fence attendance and shift assignment.</p>
         <div className="flex items-center justify-between">
           <span className="text-xs text-gray-500">{locations.length} location{locations.length!==1?"s":""} added</span>
-          <Btn size="sm" onClick={()=>{setEditingLocation(null);setLocationForm({name:"",address:"",city:"",state:"",country:"United States",pincode:"",lat:"",lng:"",radius:"200m",tz:"(UTC-5) Eastern",contact:"",phone:""});setShowAddLocation(true);}}>
+          <Btn size="sm" onClick={()=>{setEditingLocation(null);setLocationForm({name:"",type:"Regional Office",address:"",city:"",state:"",country:"United States",pincode:"",lat:"",lng:"",radius:"200m",tz:"(UTC-5) Eastern",contact:"",phone:""});setCoordMsg(null);setShowAddLocation(true);}}>
             <Plus size={12}/>Add Location
           </Btn>
         </div>
@@ -843,7 +876,7 @@ export function SetupWizard({ onComplete, initialStep = 0 }: { onComplete:()=>vo
                 </div>
               </div>
               <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
-                <button onClick={()=>{setEditingLocation(l.id);setLocationForm({...l,lat:"",lng:""});setShowAddLocation(true);}} className="p-1.5 hover:bg-gray-100 rounded text-gray-400 hover:text-gray-600" title="Edit"><Edit size={13}/></button>
+                <button onClick={()=>{setEditingLocation(l.id);setLocationForm({...l,type:l.type||"Regional Office"});setCoordMsg(null);setShowAddLocation(true);}} className="p-1.5 hover:bg-gray-100 rounded text-gray-400 hover:text-gray-600" title="Edit"><Edit size={13}/></button>
                 <button onClick={()=>deleteItem(locations,setLocations,l.id)} className="p-1.5 hover:bg-red-50 rounded text-gray-400 hover:text-red-500" title="Delete"><Trash2 size={13}/></button>
                 <button className="p-1.5 hover:bg-gray-100 rounded text-gray-400 hover:text-gray-600" title="View Details"><Eye size={13}/></button>
               </div>
@@ -1046,6 +1079,19 @@ export function SetupWizard({ onComplete, initialStep = 0 }: { onComplete:()=>vo
     // ── Step 6: Attendance Policy ─────────────────────────────────────────────
     if (step === 6) return (
       <div className="space-y-5">
+        <div className="flex items-center justify-between bg-blue-50/50 border border-blue-100 rounded-xl p-4">
+          <div>
+            <h4 className="text-sm font-semibold text-gray-800">Enable Geo-fencing Module</h4>
+            <p className="text-xs text-gray-500 mt-1">Allow restricting employee check-ins to specific office locations via GPS.</p>
+          </div>
+          <div 
+            className={cn("w-10 h-5 rounded-full relative cursor-pointer transition-colors", isGeofencingEnabled ? "bg-blue-500" : "bg-gray-300")}
+            onClick={() => setIsGeofencingEnabled(!isGeofencingEnabled)}
+          >
+            <div className={cn("absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white transition-transform", isGeofencingEnabled ? "translate-x-5" : "translate-x-0")} />
+          </div>
+        </div>
+
         <p className="text-sm text-gray-500">Define how attendance is tracked, marked, and regularized across your organization.</p>
         <div className="grid grid-cols-2 gap-4">
           <InputField label="Working Hours / Day" value={workHoursPerDay} onChange={setWorkHoursPerDay} type="number"/>
@@ -1053,12 +1099,14 @@ export function SetupWizard({ onComplete, initialStep = 0 }: { onComplete:()=>vo
           <SelectField label="Late Mark After (grace)" options={["09:05 AM","09:10 AM","09:15 AM","09:30 AM","10:00 AM"]} value={lateMarkTime} onChange={setLateMarkTime}/>
           <SelectField label="Half Day Threshold" options={["3 hours","4 hours","5 hours","6 hours"]} value={halfDayThreshold} onChange={setHalfDayThreshold}/>
           <SelectField label="Overtime Eligibility" options={["All Employees","Hourly Only","None"]} value={overtimeEligibility} onChange={setOvertimeEligibility}/>
-          <SelectField label="Geo-fence Check-in" options={["Required","Optional","Disabled"]} value={geofenceCheckin} onChange={setGeofenceCheckin}/>
+          {isGeofencingEnabled && (
+            <SelectField label="Geo-fence Check-in" options={["Required","Optional","Disabled"]} value={geofenceCheckin} onChange={setGeofenceCheckin}/>
+          )}
         </div>
         <div>
           <h4 className="text-sm font-semibold text-gray-700 mb-3">Check-in Methods</h4>
           <div className="grid grid-cols-2 gap-2">
-            {attMethods.map(m=>(
+            {attMethods.filter(m => isGeofencingEnabled ? true : m.id !== 'geo').map(m=>(
               <div key={m.id} className={cn("flex items-center justify-between p-3 rounded-lg border text-sm transition-colors cursor-pointer",m.on?"bg-[#EEF2FF] border-[#5C5CFF]/30":"bg-gray-50 border-gray-200")} onClick={()=>toggleMethod(m.id)}>
                 <div className="flex items-center gap-2">
                   <div className={cn("w-4 h-4 rounded flex items-center justify-center flex-shrink-0",m.on?"bg-[#5C5CFF]":"bg-gray-300")}>{m.on&&<Check size={10} className="text-white"/>}</div>
@@ -1171,90 +1219,76 @@ export function SetupWizard({ onComplete, initialStep = 0 }: { onComplete:()=>vo
       {/* Add / Edit Location */}
       {showAddLocation&&(
         <SW title={editingLocation?"Edit Location":"Add Location"} onClose={()=>setShowAddLocation(false)} wide>
-          <div className="flex items-center justify-between bg-blue-50 p-3.5 rounded-xl border border-blue-100 mb-2">
-            <div className="flex items-center gap-2 text-xs text-blue-700">
-              <MapPin size={16} className="text-blue-500 flex-shrink-0" />
-              <span>Use Live GPS or type address to get auto-filled recommendations and Lat/Lng coordinates.</span>
+          <div className="space-y-4">
+            <MField label="Location Name" value={locationForm.name} onChange={v=>setLocationForm(f=>({...f,name:v}))} placeholder="e.g. Seattle HQ or London Office" required/>
+            <MSelect label="Location Type" value={locationForm.type || "Regional Office"} onChange={v=>setLocationForm(f=>({...f,type:v}))} options={["Headquarters","Regional Office","Branch Office","Remote Hub"]}/>
+            <MField label="Address *" value={locationForm.address} onChange={v=>setLocationForm(f=>({...f,address:v}))} placeholder="123 Main Street" required/>
+            
+            <div className="grid grid-cols-2 gap-4">
+              <MField label="City *" value={locationForm.city} onChange={v=>setLocationForm(f=>({...f,city:v}))} placeholder="Seattle" required/>
+              <MField label="State / Province" value={locationForm.state} onChange={v=>setLocationForm(f=>({...f,state:v}))} placeholder="WA"/>
             </div>
-            <button
-              type="button"
-              onClick={handleDetectCurrentLocation}
-              disabled={isDetectingLocation}
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-[#5C5CFF] text-white hover:bg-[#4A4AE0] transition-colors text-xs font-semibold rounded-lg flex-shrink-0 cursor-pointer shadow-sm disabled:opacity-50"
-            >
-              <Navigation size={13} className={isDetectingLocation ? "animate-spin" : ""} />
-              {isDetectingLocation ? "Detecting GPS..." : "Detect Live Location"}
-            </button>
-          </div>
+            
+            <MField label="Timezone" value={locationForm.tz} onChange={v=>setLocationForm(f=>({...f,tz:v}))} placeholder="(UTC-8) Pacific"/>
 
-          <div className="grid grid-cols-2 gap-4">
-            <div className="col-span-2">
-              <MField label="Location Name" placeholder="e.g. New York HQ / Main Office" value={locationForm.name} onChange={v=>setLocationForm(f=>({...f,name:v}))} required/>
-            </div>
-            <div className="col-span-2 flex flex-col gap-1.5">
-              <label className="text-sm font-medium text-gray-700">
-                Address (Google Places Recommendations) <span className="text-red-500">*</span>
-              </label>
-              <input
-                ref={addressInputRef}
-                type="text"
-                placeholder="Type location or address (e.g. 350 Fifth Avenue, New York)"
-                value={locationForm.address}
-                onChange={e=>setLocationForm(f=>({...f,address:e.target.value}))}
-                onBlur={()=>handleGeocodeTypedAddress()}
-                className="px-3 py-2 text-sm border border-gray-300 rounded-lg bg-white text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#5C5CFF]"
-              />
-              <div className="flex justify-end">
-                <button
-                  type="button"
-                  onClick={()=>handleGeocodeTypedAddress()}
-                  className="text-xs text-[#5C5CFF] hover:underline font-semibold flex items-center gap-1 cursor-pointer"
-                >
-                  <MapPin size={11} /> Recalculate exact Lat/Lng for this Address
-                </button>
+              <div className="border border-blue-100 bg-blue-50/50 rounded-xl p-3.5 space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-bold text-gray-800 flex items-center gap-1.5">
+                    <MapPin size={13} className="text-[#5C5CFF]"/>
+                    Geofence Coordinates (Lat & Long)
+                  </label>
+                  <div className="flex gap-2">
+                    <Btn type="button" variant="outline" size="sm" onClick={handleFetchCoords} disabled={isFetchingCoords}>
+                      {isFetchingCoords ? "Fetching..." : "Fetch via API"}
+                    </Btn>
+                    <Btn type="button" variant="outline" size="sm" onClick={handleDetectCurrentLocation} disabled={isDetectingLocation}>
+                      {isDetectingLocation ? "Detecting..." : "Use GPS"}
+                    </Btn>
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <MField label="Latitude" value={locationForm.lat} onChange={v=>setLocationForm(f=>({...f,lat:v}))} placeholder="e.g. 47.6062"/>
+                  <MField label="Longitude" value={locationForm.lng} onChange={v=>setLocationForm(f=>({...f,lng:v}))} placeholder="e.g. -122.3321"/>
+                </div>
+                {coordMsg && (
+                  <p className={cn("text-[11px] font-medium leading-snug", coordMsg.startsWith("📍") ? "text-green-700" : "text-amber-700")}>
+                    {coordMsg}
+                  </p>
+                )}
               </div>
-            </div>
-            <MField label="City" placeholder="New York" value={locationForm.city} onChange={v=>setLocationForm(f=>({...f,city:v}))}/>
-            <MField label="State / Province" placeholder="NY" value={locationForm.state} onChange={v=>setLocationForm(f=>({...f,state:v}))}/>
-            <MField label="Country" placeholder="United States" value={locationForm.country} onChange={v=>setLocationForm(f=>({...f,country:v}))} required/>
-            <MField label="Pincode / ZIP" placeholder="10118" value={locationForm.pincode} onChange={v=>setLocationForm(f=>({...f,pincode:v}))}/>
-            <MField label="Latitude" placeholder="e.g. 40.7484" value={locationForm.lat} onChange={v=>setLocationForm(f=>({...f,lat:v}))}/>
-            <MField label="Longitude" placeholder="e.g. -73.9967" value={locationForm.lng} onChange={v=>setLocationForm(f=>({...f,lng:v}))}/>
-            <MSelect label="Geo-fence Radius" options={["50m","100m","150m","200m","300m","500m"]} value={locationForm.radius} onChange={v=>setLocationForm(f=>({...f,radius:v}))}/>
-            <MSelect label="Time Zone" options={["(UTC-8) Pacific","(UTC-5) Eastern","(UTC+0) UTC","(UTC+1) CET","(UTC+5:30) IST"]} value={locationForm.tz} onChange={v=>setLocationForm(f=>({...f,tz:v}))}/>
-            <MField label="Contact Person" placeholder="Alex Admin" value={locationForm.contact} onChange={v=>setLocationForm(f=>({...f,contact:v}))}/>
-            <MField label="Contact Number" type="tel" placeholder="+1 212 000 0000" value={locationForm.phone} onChange={v=>setLocationForm(f=>({...f,phone:v}))}/>
-          </div>
-          <div className="flex justify-end gap-3 pt-2 border-t border-gray-200">
-            <Btn variant="outline" onClick={()=>setShowAddLocation(false)}>Cancel</Btn>
-            <Btn onClick={()=>{
-              const latNum = parseFloat(locationForm.lat) || 0;
-              const lngNum = parseFloat(locationForm.lng) || 0;
-              const newLoc = {
-                id: editingLocation || `L${Date.now()}`,
-                name: locationForm.name || "New Location",
-                address: locationForm.address,
-                city: locationForm.city,
-                state: locationForm.state,
-                country: locationForm.country,
-                pincode: locationForm.pincode,
-                lat: locationForm.lat,
-                lng: locationForm.lng,
-                latitude: latNum,
-                longitude: lngNum,
-                tz: locationForm.tz,
-                radius: locationForm.radius,
-                contact: locationForm.contact,
-                phone: locationForm.phone,
-              };
 
-              if (editingLocation) {
-                setLocations(l=>l.map(x=>x.id===editingLocation?newLoc:x));
-              } else {
-                setLocations(l=>[...l,newLoc]);
-              }
-              setShowAddLocation(false);
-            }}>Save Location</Btn>
+            <div className="flex justify-end gap-3 pt-2 border-t border-gray-200">
+              <Btn variant="outline" onClick={()=>setShowAddLocation(false)}>Cancel</Btn>
+              <Btn onClick={()=>{
+                const latNum = parseFloat(locationForm.lat) || 0;
+                const lngNum = parseFloat(locationForm.lng) || 0;
+                const newLoc = {
+                  id: editingLocation || `L${Date.now()}`,
+                  name: locationForm.name || "New Location",
+                  type: locationForm.type || "Regional Office",
+                  address: locationForm.address,
+                  city: locationForm.city,
+                  state: locationForm.state,
+                  country: locationForm.country || "United States",
+                  pincode: locationForm.pincode,
+                  lat: locationForm.lat,
+                  lng: locationForm.lng,
+                  latitude: latNum,
+                  longitude: lngNum,
+                  tz: locationForm.tz,
+                  radius: locationForm.radius || "200m",
+                  contact: locationForm.contact,
+                  phone: locationForm.phone,
+                };
+  
+                if (editingLocation) {
+                  setLocations(l=>l.map(x=>x.id===editingLocation?newLoc:x));
+                } else {
+                  setLocations(l=>[...l,newLoc]);
+                }
+                setShowAddLocation(false);
+              }}>Save Location</Btn>
+            </div>
           </div>
         </SW>
       )}

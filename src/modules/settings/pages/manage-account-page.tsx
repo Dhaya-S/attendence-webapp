@@ -589,6 +589,7 @@ function OrgSetupSection() {
           if (d.wfhPolicy.maxWfhDaysMonth) setMaxWfhDaysMonth(d.wfhPolicy.maxWfhDaysMonth);
           if (d.wfhPolicy.geofenceRequired) setGeofenceRequired(d.wfhPolicy.geofenceRequired);
         }
+        if (d.isGeofencingEnabled !== undefined) setIsGeofencingEnabled(d.isGeofencingEnabled);
 
         const locs = d.locations || d["----------"];
         if (Array.isArray(locs) && locs.length > 0) setLocations(locs);
@@ -1094,10 +1095,22 @@ function OrgSetupSection() {
                 {isSaving ? "Saving..." : "Save Changes"}
               </Btn>
             </SectionHeader>
+            <div className="flex items-center justify-between bg-blue-50/50 border border-blue-100 rounded-xl p-4 mb-4">
+              <div>
+                <h4 className="text-sm font-semibold text-gray-800">Enable Geo-fencing Module</h4>
+                <p className="text-xs text-gray-500 mt-1">Allow restricting employee check-ins to specific office locations via GPS.</p>
+              </div>
+              <div 
+                className={cn("w-10 h-5 rounded-full relative cursor-pointer transition-colors", isGeofencingEnabled ? "bg-blue-500" : "bg-gray-300")}
+                onClick={() => { setIsGeofencingEnabled(!isGeofencingEnabled); handleSaveOrgSetup(); }}
+              >
+                <div className={cn("absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white transition-transform", isGeofencingEnabled ? "translate-x-5" : "translate-x-0")} />
+              </div>
+            </div>
             {[
               {type:"Attendance" as const, title:"Attendance Policy",items:[["Grace Period",gracePeriod],["Work Hours/Day",workHoursPerDay],["Late Mark After",lateMarkTime],["Biometric Required",biometricRequired]]},
               {type:"Leave" as const, title:"Leave Policy",items:[["Annual Leave",annualLeave],["Sick Leave",sickLeave],["Casual Leave",casualLeave],["Carryover Allowed",carryoverAllowed]]},
-              {type:"WFH" as const, title:"Work From Home",items:[["WFH Allowed",wfhAllowed],["Max WFH Days/Month",maxWfhDaysMonth],["Geo-fence Required",geofenceRequired]]},
+              {type:"WFH" as const, title:"Work From Home",items:[["WFH Allowed",wfhAllowed],["Max WFH Days/Month",maxWfhDaysMonth], ...(isGeofencingEnabled ? [["Geo-fence Required",geofenceRequired]] : [])]},
             ].map(s=>(
               <div key={s.title} className="bg-white border border-gray-200 rounded-xl p-5">
                 <div className="flex items-center justify-between mb-3">
@@ -1416,31 +1429,31 @@ function OrgSetupSection() {
             </div>
             <InputField label="Timezone" value={newLocTz} onChange={(v: any) => setNewLocTz(String(v?.target?.value ?? v))} placeholder="(UTC-8) Pacific"/>
 
-            <div className="border border-blue-100 bg-blue-50/50 rounded-xl p-3.5 space-y-2.5">
-              <div className="flex items-center justify-between">
-                <label className="text-xs font-bold text-gray-800 flex items-center gap-1.5">
-                  <MapPin size={13} className="text-[#5C5CFF]"/>
-                  Geofence Coordinates (Lat & Long)
-                </label>
-                <div className="flex gap-2">
-                  <Btn type="button" variant="outline" size="sm" onClick={handleFetchCoords} disabled={isFetchingCoords}>
-                    {isFetchingCoords ? "Fetching..." : "Fetch via API"}
-                  </Btn>
-                  <Btn type="button" variant="outline" size="sm" onClick={handleUseGps}>
-                    Use GPS
-                  </Btn>
+              <div className="border border-blue-100 bg-blue-50/50 rounded-xl p-3.5 space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-bold text-gray-800 flex items-center gap-1.5">
+                    <MapPin size={13} className="text-[#5C5CFF]"/>
+                    Geofence Coordinates (Lat & Long)
+                  </label>
+                  <div className="flex gap-2">
+                    <Btn type="button" variant="outline" size="sm" onClick={handleFetchCoords} disabled={isFetchingCoords}>
+                      {isFetchingCoords ? "Fetching..." : "Fetch via API"}
+                    </Btn>
+                    <Btn type="button" variant="outline" size="sm" onClick={handleUseGps}>
+                      Use GPS
+                    </Btn>
+                  </div>
                 </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <InputField label="Latitude" value={newLocLat} onChange={(v: any) => setNewLocLat(String(v?.target?.value ?? v))} placeholder="e.g. 47.6062"/>
+                  <InputField label="Longitude" value={newLocLng} onChange={(v: any) => setNewLocLng(String(v?.target?.value ?? v))} placeholder="e.g. -122.3321"/>
+                </div>
+                {coordMsg && (
+                  <p className={cn("text-[11px] font-medium leading-snug", coordMsg.startsWith("📍") ? "text-green-700" : "text-amber-700")}>
+                    {coordMsg}
+                  </p>
+                )}
               </div>
-              <div className="grid grid-cols-2 gap-3">
-                <InputField label="Latitude" value={newLocLat} onChange={(v: any) => setNewLocLat(String(v?.target?.value ?? v))} placeholder="e.g. 47.6062"/>
-                <InputField label="Longitude" value={newLocLng} onChange={(v: any) => setNewLocLng(String(v?.target?.value ?? v))} placeholder="e.g. -122.3321"/>
-              </div>
-              {coordMsg && (
-                <p className={cn("text-[11px] font-medium leading-snug", coordMsg.startsWith("✅") ? "text-green-700" : "text-amber-700")}>
-                  {coordMsg}
-                </p>
-              )}
-            </div>
 
             <div className="flex justify-end gap-3 pt-2 border-t border-gray-200">
               <Btn variant="outline" onClick={()=>{ setShowAddLoc(false); setEditingLoc(null); }}>Cancel</Btn>
